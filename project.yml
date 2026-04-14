@@ -1,0 +1,62 @@
+name: MyPi
+options:
+  bundleIdPrefix: net.myssdomain
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypi
+    DEVELOPMENT_TEAM: ""
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+
+targets:
+  MyPi:
+    type: application
+    platform: iOS
+    sources:
+      - path: MyPi
+    info:
+      path: MyPi/Info.plist
+      properties:
+        CFBundleDisplayName: MyPi
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations: {}
+        BGTaskSchedulerPermittedIdentifiers:
+          - net.myssdomain.mypi.refresh
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+    settings:
+      base:
+        INFOPLIST_FILE: MyPi/Info.plist
+
+  MyPiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MyPiTests
+    dependencies:
+      - target: MyPi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypiTests
