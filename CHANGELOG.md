@@ -4,6 +4,18 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.0.3] — 2026-04-18
+
+### Fixed
+
+- Setup sheet now validates the API key before saving the site. Previously it only called the unauthenticated `/api/health` endpoint, so pasting a wrong/inactive key was silently accepted and the user only saw "Not authenticated" later when the dashboard tried to load. The sheet now also probes `/api/stats/summary` with the pasted key and surfaces `"API key rejected: <detail>"` inline if the server returns 401. Both the standard and self-signed/TOFU code paths perform the check.
+
+### Added
+
+- `APIClient.verifyAPIKey(_:)` — lightweight helper that probes an authenticated endpoint without having to persist the key to the Keychain first. Used by the setup sheet.
+
+---
+
 ## [0.0.2] — 2026-04-18
 
 ### Fixed

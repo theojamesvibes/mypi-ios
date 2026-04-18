@@ -74,7 +74,7 @@ struct SetupSheet: View {
             if let fp = pendingFingerprint {
                 CertTrustSheet(fingerprint: fp) { trusted in
                     if trusted {
-                        commitSite(pinnedFingerprint: fp)
+                        Task { await verifyKeyThenCommit(pinnedFingerprint: fp) }
                     } else {
                         errorMessage = "Certificate not trusted. Add it or disable self-signed support."
                     }
@@ -125,7 +125,7 @@ struct SetupSheet: View {
             }
         }
 
-        // Standard connection test.
+        // Standard connection test (unauthenticated).
         do {
             _ = try await client.health()
         } catch {
@@ -133,7 +133,43 @@ struct SetupSheet: View {
             return
         }
 
+        // Authenticated check — reject the form if the API key is wrong.
+        do {
+            try await client.verifyAPIKey(apiKey.trimmingCharacters(in: .whitespaces))
+        } catch let apiErr as APIError {
+            errorMessage = "API key rejected: \(apiErr.detail)"
+            return
+        } catch {
+            errorMessage = "Authentication check failed: \(error.localizedDescription)"
+            return
+        }
+
         commitSite(pinnedFingerprint: nil)
+    }
+
+    /// After self-signed cert trust, re-open a client with the pinned fingerprint,
+    /// verify the API key, and only then commit.
+    private func verifyKeyThenCommit(pinnedFingerprint: String) async {
+        isVerifying = true
+        defer { isVerifying = false }
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
+        let pinnedSite = Site(
+            name: name.trimmingCharacters(in: .whitespaces),
+            baseURL: url,
+            allowSelfSigned: allowSelfSigned,
+            pinnedCertFingerprint: pinnedFingerprint
+        )
+        let pinnedClient = APIClient(site: pinnedSite)
+        do {
+            try await pinnedClient.verifyAPIKey(apiKey.trimmingCharacters(in: .whitespaces))
+        } catch let apiErr as APIError {
+            errorMessage = "API key rejected: \(apiErr.detail)"
+            return
+        } catch {
+            errorMessage = "Authentication check failed: \(error.localizedDescription)"
+            return
+        }
+        commitSite(pinnedFingerprint: pinnedFingerprint)
     }
 
     private func commitSite(pinnedFingerprint: String?) {
