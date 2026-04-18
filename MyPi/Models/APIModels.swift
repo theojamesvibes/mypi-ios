@@ -127,10 +127,14 @@ struct QueryPage: Decodable {
     let total: Int
     let page: Int
     let pageSize: Int
-    let pages: Int
+
+    var pages: Int {
+        guard pageSize > 0 else { return 0 }
+        return (total + pageSize - 1) / pageSize
+    }
 
     enum CodingKeys: String, CodingKey {
-        case items, total, page, pages
+        case items, total, page
         case pageSize = "page_size"
     }
 }

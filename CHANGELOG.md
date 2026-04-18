@@ -4,6 +4,14 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.0.5] — 2026-04-18
+
+### Fixed
+
+- Query Log tab failed to load with "The data couldn't be read because it is missing." Root cause: `QueryPage` required a `pages` field in `init(from:)`, but the MyPi server's `/api/queries` endpoint never returns it — the server ships `{total, page, page_size, items}` only. `pages` is now computed from `total` and `pageSize` and removed from the decoded fields, so the decode succeeds against the real API shape.
+
+---
+
 ## [0.0.4] — 2026-04-18
 
 ### Fixed
