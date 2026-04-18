@@ -39,6 +39,12 @@ final class KeychainStore {
 
     // MARK: - Private helpers
 
+    /// On simulator (or any build without a proper code-signing team), `SecItemAdd`
+    /// fails with errSecMissingEntitlement and we silently lose the value. Fall back
+    /// to UserDefaults in that case so the app is still usable for local testing.
+    /// On real signed builds the Keychain path succeeds and UserDefaults is never touched.
+    private static let defaultsPrefix = "net.myssdomain.mypi.fallback."
+
     private func save(_ value: String, account: String) {
         guard let data = value.data(using: .utf8) else { return }
         delete(account: account)
@@ -49,7 +55,10 @@ final class KeychainStore {
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            UserDefaults.standard.set(value, forKey: Self.defaultsPrefix + account)
+        }
     }
 
     private func load(account: String) -> String? {
@@ -62,10 +71,12 @@ final class KeychainStore {
         ]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let string = String(data: data, encoding: .utf8) else { return nil }
-        return string
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let string = String(data: data, encoding: .utf8) {
+            return string
+        }
+        return UserDefaults.standard.string(forKey: Self.defaultsPrefix + account)
     }
 
     private func delete(account: String) {
@@ -75,5 +86,6 @@ final class KeychainStore {
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: Self.defaultsPrefix + account)
     }
 }
