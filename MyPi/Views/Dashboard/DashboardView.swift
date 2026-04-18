@@ -91,7 +91,7 @@ private struct StatCardsSection: View {
             )
             StatCardView(
                 title: "Blocked",
-                value: "\(stats.queriesBlocked.formatted()) (\(stats.percentBlocked, format: .number.precision(.fractionLength(1)))%)",
+                value: "\(stats.queriesBlocked.formatted()) (\(stats.percentBlocked.formatted(.number.precision(.fractionLength(1))))%)",
                 icon: "shield.fill",
                 color: .red
             )

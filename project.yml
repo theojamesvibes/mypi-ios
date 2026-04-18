@@ -2,18 +2,18 @@ name: MyPi
 options:
   bundleIdPrefix: net.myssdomain
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
 
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.0.1"
+    MARKETING_VERSION: "0.0.2"
     CURRENT_PROJECT_VERSION: "1"
     PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypi
     DEVELOPMENT_TEAM: ""
-    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
     SWIFT_STRICT_CONCURRENCY: complete
 
 targets:

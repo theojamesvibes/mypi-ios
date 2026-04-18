@@ -14,14 +14,14 @@ final class DiskCache {
 
     private init() {}
 
-    func write<T: Encodable>(_ value: T, key: String) {
+    func write<T: Codable>(_ value: T, key: String) {
         let wrapper = CachedResponse(data: value, fetchedAt: Date())
         guard let data = try? JSONEncoder().encode(wrapper) else { return }
         let url = directory.appendingPathComponent(sanitize(key))
         try? data.write(to: url, options: .atomic)
     }
 
-    func read<T: Decodable>(key: String, as type: T.Type) -> CachedResponse<T>? {
+    func read<T: Codable>(key: String, as type: T.Type) -> CachedResponse<T>? {
         let url = directory.appendingPathComponent(sanitize(key))
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(CachedResponse<T>.self, from: data)
