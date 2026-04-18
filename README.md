@@ -31,6 +31,19 @@ open MyPi.xcodeproj
 
 Then select your target device or simulator and press Run.
 
+### Command-line build (optional)
+
+Xcode's Run button handles signing automatically. If you prefer to build from the terminal for the simulator, use ad-hoc signing — a fully unsigned build fails at runtime because the Keychain rejects API-key writes without entitlements:
+
+```bash
+xcodebuild -project MyPi.xcodeproj -scheme MyPi -configuration Debug \
+  -destination "platform=iOS Simulator,name=iPhone 17 Pro Max" \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES \
+  build
+```
+
+On real devices a fully signed build (with a proper Apple Developer Team) uses the Keychain natively; the `UserDefaults` fallback in `KeychainStore` only kicks in for unsigned builds and is never touched on a signed install.
+
 ## Configuration
 
 On first launch the app presents a setup sheet. Enter:
@@ -62,4 +75,4 @@ MyPi/
 
 ## Version
 
-Current release: **0.0.3**
+Current release: **0.0.4**
