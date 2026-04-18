@@ -27,7 +27,7 @@ struct MyPiApp: App {
     }
 
     private func handleBackgroundRefresh(_ task: BGAppRefreshTask) {
-        scheduleBackgroundRefresh()
+        Self.scheduleBackgroundRefresh()
         Task {
             await appState.refreshActiveSite()
             task.setTaskCompleted(success: true)
@@ -42,8 +42,4 @@ struct MyPiApp: App {
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
-}
-
-private func scheduleBackgroundRefresh() {
-    MyPiApp.scheduleBackgroundRefresh()
 }

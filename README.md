@@ -14,7 +14,7 @@ Native iOS/iPadOS companion app for [MyPi](https://github.com/theojamesvibes/myp
 
 ## Requirements
 
-- iOS 17+ / iPadOS 17+
+- iOS 18+ / iPadOS 18+
 - Xcode 16+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 - A running [MyPi](https://github.com/theojamesvibes/mypi) server (v1.4.6+)
@@ -62,4 +62,4 @@ MyPi/
 
 ## Version
 
-Current release: **0.0.1**
+Current release: **0.0.2**

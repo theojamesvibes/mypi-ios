@@ -16,12 +16,12 @@ struct HealthResponse: Decodable {
 
 // MARK: - Summary / Dashboard
 
-struct AggregatedSummary: Decodable {
+struct AggregatedSummary: Codable {
     let totals: SummaryStats
     let instances: [InstanceSummary]
 }
 
-struct SummaryStats: Decodable {
+struct SummaryStats: Codable {
     let dnsQueriesToday: Int
     let queriesBlocked: Int
     let percentBlocked: Double
@@ -41,7 +41,7 @@ struct SummaryStats: Decodable {
     }
 }
 
-struct InstanceSummary: Decodable, Identifiable {
+struct InstanceSummary: Codable, Identifiable {
     let id: String
     let name: String
     let url: String
@@ -71,7 +71,7 @@ struct InstanceSummary: Decodable, Identifiable {
 
 // MARK: - History
 
-struct HistoryResponse: Decodable {
+struct HistoryResponse: Codable {
     let buckets: [HistoryBucket]
     let instanceId: String?
 
@@ -81,7 +81,7 @@ struct HistoryResponse: Decodable {
     }
 }
 
-struct HistoryBucket: Decodable, Identifiable {
+struct HistoryBucket: Codable, Identifiable {
     var id: String { timestamp }
     let timestamp: String
     let queries: Int
@@ -94,7 +94,7 @@ struct HistoryBucket: Decodable, Identifiable {
 
 // MARK: - Top Stats
 
-struct TopStatsResponse: Decodable {
+struct TopStatsResponse: Codable {
     let topPermitted: [TopDomain]
     let topBlocked: [TopDomain]
     let topClients: [TopClient]
@@ -108,13 +108,13 @@ struct TopStatsResponse: Decodable {
     }
 }
 
-struct TopDomain: Decodable, Identifiable {
+struct TopDomain: Codable, Identifiable {
     var id: String { domain }
     let domain: String
     let count: Int
 }
 
-struct TopClient: Decodable, Identifiable {
+struct TopClient: Codable, Identifiable {
     var id: String { client }
     let client: String
     let count: Int
