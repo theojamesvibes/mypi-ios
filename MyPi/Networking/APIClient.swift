@@ -37,6 +37,27 @@ final class APIClient {
         try await get("/api/health", authenticated: false)
     }
 
+    /// Verify a candidate API key against an authenticated endpoint without
+    /// having to persist it to the Keychain first. Throws `APIError` on 401.
+    func verifyAPIKey(_ key: String) async throws {
+        guard let url = URL(string: "/api/stats/summary?hours=1", relativeTo: site.baseURL)?.absoluteURL else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(key, forHTTPHeaderField: "X-API-Key")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            if let apiErr = try? decoder.decode(APIError.self, from: data) {
+                throw apiErr
+            }
+            throw URLError(.badServerResponse)
+        }
+    }
+
     func summary(hours: Int = 24) async throws -> AggregatedSummary {
         try await get("/api/stats/summary?hours=\(hours)")
     }
