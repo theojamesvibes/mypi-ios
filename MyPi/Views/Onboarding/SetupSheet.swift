@@ -84,8 +84,12 @@ struct SetupSheet: View {
         .interactiveDismissDisabled(appState.sites.isEmpty)
     }
 
+    private var resolvedName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Home" : trimmed
+    }
+
     private var isFormValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
         URL(string: urlString) != nil &&
         !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -101,7 +105,7 @@ struct SetupSheet: View {
         }
 
         let draft = Site(
-            name: name.trimmingCharacters(in: .whitespaces),
+            name: resolvedName,
             baseURL: url,
             allowSelfSigned: allowSelfSigned
         )
@@ -154,7 +158,7 @@ struct SetupSheet: View {
         defer { isVerifying = false }
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
         let pinnedSite = Site(
-            name: name.trimmingCharacters(in: .whitespaces),
+            name: resolvedName,
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: pinnedFingerprint
@@ -175,7 +179,7 @@ struct SetupSheet: View {
     private func commitSite(pinnedFingerprint: String?) {
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
         let site = Site(
-            name: name.trimmingCharacters(in: .whitespaces),
+            name: resolvedName,
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: pinnedFingerprint

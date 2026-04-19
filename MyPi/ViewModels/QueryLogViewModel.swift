@@ -13,7 +13,7 @@ final class QueryLogViewModel {
     var filter: QueryFilter = .all {
         didSet { Task { await reset() } }
     }
-    var selectedHours: Int = 24 {
+    var selectedRange: TimeRange = .today {
         didSet { Task { await reset() } }
     }
 
@@ -59,7 +59,7 @@ final class QueryLogViewModel {
             let result = try await client.queries(
                 page: page,
                 pageSize: pageSize,
-                hours: selectedHours,
+                range: selectedRange,
                 filter: filter
             )
             if appending {

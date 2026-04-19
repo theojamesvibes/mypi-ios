@@ -15,14 +15,16 @@ final class DashboardViewModel {
     var top: TopStatsResponse?
     var lastUpdated: Date?
     var isStale: Bool = false
+    var serverVersion: String?
 
-    var selectedHours: Int = 24 {
+    var selectedRange: TimeRange = .today {
         didSet { Task { await refresh() } }
     }
 
     // MARK: - Private
 
     private let client: APIClient
+    private weak var appState: AppState?
     private let monitor = NetworkMonitor.shared
     private var pollTask: Task<Void, Never>?
 
@@ -33,8 +35,9 @@ final class DashboardViewModel {
         "dashboard-\(client.site.id.uuidString)"
     }
 
-    init(client: APIClient) {
+    init(client: APIClient, appState: AppState? = nil) {
         self.client = client
+        self.appState = appState
     }
 
     // MARK: - Public
@@ -70,16 +73,20 @@ final class DashboardViewModel {
         guard monitor.isConnected else { return }
         loadState = .loading
         do {
-            // Discover poll intervals on first fetch.
-            if staleThresholdSeconds == 120 {
+            // Discover poll intervals and capture server version on first fetch.
+            if serverVersion == nil {
                 if let health = try? await client.health() {
                     staleThresholdSeconds = Double(health.statsPollInterval) * 2
+                    serverVersion = health.version
+                    if let appState, let site = appState.activeSite, site.id == client.site.id {
+                        appState.connectionStates[site.id] = .connected(serverVersion: health.version)
+                    }
                 }
             }
 
-            async let summaryTask = client.summary(hours: selectedHours)
-            async let historyTask = client.history(hours: selectedHours, bucketMinutes: bucketMinutes(for: selectedHours))
-            async let topTask = client.top(hours: selectedHours)
+            async let summaryTask = client.summary(range: selectedRange)
+            async let historyTask = client.history(range: selectedRange)
+            async let topTask = client.top(range: selectedRange)
 
             let (s, h, t) = try await (summaryTask, historyTask, topTask)
             summary = s
@@ -100,6 +107,7 @@ final class DashboardViewModel {
             } else {
                 loadState = .failed(error.localizedDescription)
             }
+            await appState?.probe(site: client.site)
         }
     }
 
@@ -112,16 +120,6 @@ final class DashboardViewModel {
                     await fetchAll()
                 }
             }
-        }
-    }
-
-    private func bucketMinutes(for hours: Int) -> Int {
-        switch hours {
-        case 1: return 5
-        case 2...6: return 10
-        case 7...24: return 30
-        case 25...168: return 60
-        default: return 120
         }
     }
 }

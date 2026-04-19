@@ -5,6 +5,7 @@ struct StatCardView: View {
     let value: String
     let icon: String
     let color: Color
+    var showsDisclosure: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -12,6 +13,11 @@ struct StatCardView: View {
                 Image(systemName: icon)
                     .foregroundStyle(color)
                 Spacer()
+                if showsDisclosure {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Text(value)
                 .font(.title3).bold()

@@ -1,9 +1,15 @@
 import Foundation
+import Observation
 
 /// HTTP client for a single MyPi site. Holds a persistent URLSession configured
 /// for the site's TLS policy. API key is fetched from the Keychain on each request.
+@Observable
 final class APIClient {
     let site: Site
+
+    /// Negotiated TLS protocol version observed on the most recent request
+    /// (e.g. "TLS 1.3"). `nil` until the first request completes.
+    private(set) var lastTLSVersion: String?
 
     private let session: URLSession
     private let tlsDelegate: TLSDelegate
@@ -29,6 +35,9 @@ final class APIClient {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         self.session = URLSession(configuration: config, delegate: tlsDelegate, delegateQueue: nil)
+        self.tlsDelegate.onTLSVersionObserved = { [weak self] version in
+            Task { @MainActor in self?.lastTLSVersion = version }
+        }
     }
 
     // MARK: - Public endpoints
@@ -58,22 +67,33 @@ final class APIClient {
         }
     }
 
-    func summary(hours: Int = 24) async throws -> AggregatedSummary {
-        try await get("/api/stats/summary?hours=\(hours)")
+    func summary(range: TimeRange) async throws -> AggregatedSummary {
+        try await get("/api/stats/summary?\(range.queryString())")
     }
 
-    func history(hours: Int = 24, bucketMinutes: Int = 10) async throws -> HistoryResponse {
-        try await get("/api/stats/history?hours=\(hours)&bucket_minutes=\(bucketMinutes)")
+    func history(range: TimeRange) async throws -> HistoryResponse {
+        try await get("/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)")
     }
 
-    func top(hours: Int = 24, limit: Int = 10) async throws -> TopStatsResponse {
-        try await get("/api/stats/top?hours=\(hours)&limit=\(limit)")
+    func top(range: TimeRange, limit: Int = 10) async throws -> TopStatsResponse {
+        try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
     }
 
-    func queries(page: Int = 1, pageSize: Int = 50, hours: Int = 24, filter: QueryFilter = .all) async throws -> QueryPage {
-        var path = "/api/queries?page=\(page)&page_size=\(pageSize)&hours=\(hours)"
-        if let type_ = filter.queryType { path += "&query_type=\(type_)" }
+    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all) async throws -> QueryPage {
+        var path = "/api/queries?page=\(page)&page_size=\(pageSize)&\(range.queryString())"
+        if let q = filter.queryParam { path += "&\(q)" }
         return try await get(path)
+    }
+
+    /// Raw blocked-only rows, timestamp DESC. Used by the Blocked drill-down to
+    /// compute the latest block per domain via client-side dedupe.
+    func blockedQueries(range: TimeRange, pageSize: Int = 500) async throws -> QueryPage {
+        try await get("/api/queries?page=1&page_size=\(pageSize)&blocked=true&\(range.queryString())")
+    }
+
+    /// Aggregated per-client stats, grouped server-side. Used by the Unique Clients drill-down.
+    func clients(range: TimeRange) async throws -> [ClientSummary] {
+        try await get("/api/queries/clients?\(range.queryString())")
     }
 
     // MARK: - Generic request
@@ -97,6 +117,9 @@ final class APIClient {
             if let apiErr = try? decoder.decode(APIError.self, from: data) {
                 throw apiErr
             }
+            if http.statusCode == 401 {
+                throw APIError(detail: "Not authenticated")
+            }
             throw URLError(.badServerResponse)
         }
         return try decoder.decode(T.self, from: data)
@@ -105,8 +128,11 @@ final class APIClient {
 
 // MARK: - QueryFilter
 
+/// Matches the filter options the MyPi server `/api/queries` endpoint supports.
+/// The server exposes a `blocked: bool` query param; there is no dedicated
+/// "cached" filter, so we don't expose one here.
 enum QueryFilter: String, CaseIterable, Identifiable {
-    case all, permitted, blocked, cached
+    case all, permitted, blocked
 
     var id: String { rawValue }
     var label: String {
@@ -114,16 +140,15 @@ enum QueryFilter: String, CaseIterable, Identifiable {
         case .all: return "All"
         case .permitted: return "Permitted"
         case .blocked: return "Blocked"
-        case .cached: return "Cached"
         }
     }
 
-    var queryType: String? {
+    /// Raw query-string fragment to append, or nil for no filter.
+    var queryParam: String? {
         switch self {
         case .all: return nil
-        case .permitted: return "permitted"
-        case .blocked: return "blocked"
-        case .cached: return "cached"
+        case .permitted: return "blocked=false"
+        case .blocked: return "blocked=true"
         }
     }
 }

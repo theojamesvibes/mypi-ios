@@ -12,7 +12,11 @@ struct SiteListView: View {
                     NavigationLink {
                         SiteFormView(site: site)
                     } label: {
-                        SiteRow(site: site, isActive: appState.activeSiteIndex == idx)
+                        SiteRow(
+                            site: site,
+                            isActive: appState.activeSiteIndex == idx,
+                            connection: appState.connectionStates[site.id] ?? .unknown
+                        )
                     }
                     .onTapGesture {
                         appState.activeSiteIndex = idx
@@ -38,6 +42,12 @@ struct SiteListView: View {
             .sheet(isPresented: $showAddSheet) {
                 SetupSheet()
             }
+            .task {
+                await appState.probeAll()
+            }
+            .refreshable {
+                await appState.probeAll()
+            }
         }
     }
 }
@@ -45,14 +55,21 @@ struct SiteListView: View {
 private struct SiteRow: View {
     let site: Site
     let isActive: Bool
+    let connection: SiteConnectionState
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(connection.color)
+                .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
                 Text(site.name).font(.headline)
                 Text(site.baseURL.host() ?? site.baseURL.absoluteString)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text(connection.label)
+                    .font(.caption2)
+                    .foregroundStyle(connection.color)
             }
             Spacer()
             if isActive {
