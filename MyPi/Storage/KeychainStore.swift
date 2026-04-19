@@ -29,10 +29,6 @@ final class KeychainStore {
         save(fingerprint, account: "cert-\(siteID.uuidString)")
     }
 
-    func certFingerprint(for siteID: UUID) -> String? {
-        load(account: "cert-\(siteID.uuidString)")
-    }
-
     func deleteCertFingerprint(for siteID: UUID) {
         delete(account: "cert-\(siteID.uuidString)")
     }
@@ -41,7 +37,10 @@ final class KeychainStore {
 
     /// On simulator (or any build without a proper code-signing team), `SecItemAdd`
     /// fails with errSecMissingEntitlement and we silently lose the value. Fall back
-    /// to UserDefaults in that case so the app is still usable for local testing.
+    /// to UserDefaults **only for that specific status** so the app stays usable
+    /// for local testing; any other Keychain error (e.g. transient
+    /// first-unlock failure on a real device) is surfaced as a failure rather
+    /// than silently downgrading the storage security.
     /// On real signed builds the Keychain path succeeds and UserDefaults is never touched.
     private static let defaultsPrefix = "net.myssdomain.mypi.fallback."
 
@@ -56,7 +55,7 @@ final class KeychainStore {
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
+        if status == errSecMissingEntitlement {
             UserDefaults.standard.set(value, forKey: Self.defaultsPrefix + account)
         }
     }

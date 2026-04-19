@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var state = appState
@@ -14,6 +15,17 @@ struct ContentView: View {
         }
         .sheet(isPresented: $state.showSetupSheet) {
             SetupSheet()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Refresh whenever the app comes back to the foreground. Replaces
+            // the old BGAppRefreshTask plumbing — cheaper, more predictable,
+            // and the data is fresh exactly when the user can see it.
+            if phase == .active {
+                Task {
+                    await appState.dashboardVM?.refresh()
+                    await appState.queryLogVM?.refresh()
+                }
+            }
         }
     }
 }
@@ -56,12 +68,10 @@ private struct MainTabView: View {
                     QueryLogView(vm: vm)
                 }
             }
-            Tab("Sites", systemImage: "server.rack") {
-                SiteListView()
-            }
             Tab("Settings", systemImage: "gear") {
                 AppSettingsView()
             }
         }
+        .tabViewStyle(.sidebarAdaptable)
     }
 }

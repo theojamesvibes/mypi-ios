@@ -6,26 +6,21 @@ struct AppSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Active Site") {
-                    if let site = appState.activeSite {
-                        LabeledContent("Name", value: site.name)
-                        LabeledContent("URL", value: site.baseURL.absoluteString)
-                        tlsRow(for: site)
-                    } else {
-                        Text("No site selected")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Sites") {
-                    NavigationLink("Manage Sites") {
-                        SiteListView()
-                    }
-                }
-
                 Section("Connection") {
+                    if let site = appState.activeSite {
+                        LabeledContent("Site URL") {
+                            Text(site.baseURL.absoluteString)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
                     statusRow
                     serverVersionRow
+                    if let site = appState.activeSite {
+                        tlsRow(for: site)
+                    }
                 }
 
                 Section("About") {
@@ -33,6 +28,19 @@ struct AppSettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    SiteSwitcherMenu()
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SiteListView()
+                    } label: {
+                        Text("Manage Sites")
+                    }
+                }
+            }
             .task {
                 if let site = appState.activeSite {
                     await appState.probe(site: site)

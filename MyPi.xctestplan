@@ -1,0 +1,29 @@
+{
+  "configurations" : [
+    {
+      "id" : "2105F432-F359-4842-92A7-6A967C729ACE",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:MyPi.xcodeproj",
+      "identifier" : "CD9E321A2744C9D87AF8EFC5",
+      "name" : "MyPi"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:MyPi.xcodeproj",
+        "identifier" : "ED1D4DEBB5A61F19F3BB47A0",
+        "name" : "MyPiTests"
+      }
+    }
+  ],
+  "version" : 1
+}

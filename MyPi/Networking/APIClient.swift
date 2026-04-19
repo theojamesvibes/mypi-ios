@@ -1,6 +1,34 @@
 import Foundation
 import Observation
 
+private let _isoFractional: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private let _isoBasic: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()
+
+private let _naiveFractional: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+    return f
+}()
+
+private let _naiveBasic: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = TimeZone(identifier: "UTC")
+    f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+    return f
+}()
+
 /// HTTP client for a single MyPi site. Holds a persistent URLSession configured
 /// for the site's TLS policy. API key is fetched from the Keychain on each request.
 @Observable
@@ -15,9 +43,29 @@ final class APIClient {
     private let tlsDelegate: TLSDelegate
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        // FastAPI on the server emits datetimes with microsecond precision
+        // and sometimes without a timezone designator; the default .iso8601
+        // strategy rejects both shapes, so we try a sequence of parsers.
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let str = try container.decode(String.self)
+            if let date = APIClient.parseDate(str) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unrecognized date format: \(str)"
+            )
+        }
         return d
     }()
+
+    /// Try a sequence of ISO 8601 shapes; returns nil if none match.
+    static func parseDate(_ s: String) -> Date? {
+        if let d = _isoFractional.date(from: s) { return d }
+        if let d = _isoBasic.date(from: s) { return d }
+        if let d = _naiveFractional.date(from: s) { return d }
+        if let d = _naiveBasic.date(from: s) { return d }
+        return nil
+    }
 
     /// Fires when an unrecognised certificate is encountered (TOFU opportunity).
     var onUntrustedCertificate: ((String) -> Void)? {
@@ -38,6 +86,13 @@ final class APIClient {
         self.tlsDelegate.onTLSVersionObserved = { [weak self] version in
             Task { @MainActor in self?.lastTLSVersion = version }
         }
+    }
+
+    /// `URLSession` retains its delegate strongly, so without an explicit
+    /// invalidate the session + TLSDelegate pair leaks for the app's lifetime
+    /// every time an `APIClient` is replaced (e.g. after a site edit).
+    deinit {
+        session.finishTasksAndInvalidate()
     }
 
     // MARK: - Public endpoints
@@ -79,21 +134,26 @@ final class APIClient {
         try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
     }
 
-    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all) async throws -> QueryPage {
+    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all, domain: String? = nil) async throws -> QueryPage {
         var path = "/api/queries?page=\(page)&page_size=\(pageSize)&\(range.queryString())"
         if let q = filter.queryParam { path += "&\(q)" }
+        if let d = domain?.trimmingCharacters(in: .whitespaces), !d.isEmpty,
+           let encoded = d.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&domain=\(encoded)"
+        }
         return try await get(path)
-    }
-
-    /// Raw blocked-only rows, timestamp DESC. Used by the Blocked drill-down to
-    /// compute the latest block per domain via client-side dedupe.
-    func blockedQueries(range: TimeRange, pageSize: Int = 500) async throws -> QueryPage {
-        try await get("/api/queries?page=1&page_size=\(pageSize)&blocked=true&\(range.queryString())")
     }
 
     /// Aggregated per-client stats, grouped server-side. Used by the Unique Clients drill-down.
     func clients(range: TimeRange) async throws -> [ClientSummary] {
         try await get("/api/queries/clients?\(range.queryString())")
+    }
+
+    /// Global sync state — the timestamp of the last query-log sync run,
+    /// plus per-instance success/failure. The sync schedule runs hourly by
+    /// default (separate from the stats poll which is much more frequent).
+    func syncStatus() async throws -> SyncStatus {
+        try await get("/api/sync/status")
     }
 
     // MARK: - Generic request
@@ -128,11 +188,12 @@ final class APIClient {
 
 // MARK: - QueryFilter
 
-/// Matches the filter options the MyPi server `/api/queries` endpoint supports.
-/// The server exposes a `blocked: bool` query param; there is no dedicated
-/// "cached" filter, so we don't expose one here.
+/// Mirrors the Filter dropdown on the MyPi web Query Log:
+/// All / Permitted / Blocked map to `/api/queries?blocked=...`, while
+/// `.uniqueClients` swaps the list for the server's per-client aggregate
+/// from `/api/queries/clients`.
 enum QueryFilter: String, CaseIterable, Identifiable {
-    case all, permitted, blocked
+    case all, permitted, blocked, uniqueClients
 
     var id: String { rawValue }
     var label: String {
@@ -140,15 +201,19 @@ enum QueryFilter: String, CaseIterable, Identifiable {
         case .all: return "All"
         case .permitted: return "Permitted"
         case .blocked: return "Blocked"
+        case .uniqueClients: return "Unique Clients"
         }
     }
 
-    /// Raw query-string fragment to append, or nil for no filter.
+    /// Raw query-string fragment for /api/queries; returns nil for All and
+    /// for Unique Clients (which hits a different endpoint entirely).
     var queryParam: String? {
         switch self {
-        case .all: return nil
+        case .all, .uniqueClients: return nil
         case .permitted: return "blocked=false"
         case .blocked: return "blocked=true"
         }
     }
+
+    var isClientsMode: Bool { self == .uniqueClients }
 }

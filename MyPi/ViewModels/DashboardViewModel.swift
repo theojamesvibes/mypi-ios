@@ -13,12 +13,13 @@ final class DashboardViewModel {
     var summary: AggregatedSummary?
     var history: HistoryResponse?
     var top: TopStatsResponse?
+    var syncStatus: SyncStatus?
     var lastUpdated: Date?
     var isStale: Bool = false
     var serverVersion: String?
 
     var selectedRange: TimeRange = .today {
-        didSet { Task { await refresh() } }
+        didSet { Task { [weak self] in await self?.refresh() } }
     }
 
     // MARK: - Private
@@ -31,6 +32,16 @@ final class DashboardViewModel {
     // Stale after 2 missed poll cycles (populated from /api/health on first load).
     private var staleThresholdSeconds: Double = 120
 
+    /// Consecutive failed `fetchAll()` attempts. Used to back off the poll
+    /// interval so a site that's down doesn't produce a steady
+    /// 4-requests-per-minute stream of failures.
+    private var consecutiveFailures: Int = 0
+
+    /// Skip any `fetchAll` call that lands within this many seconds of the
+    /// previous successful one. Prevents scenePhase foreground + poll-tick +
+    /// tab-re-`onAppear` from triple-firing against the server.
+    private let minFetchInterval: TimeInterval = 5
+
     private var cacheKeyPrefix: String {
         "dashboard-\(client.site.id.uuidString)"
     }
@@ -40,10 +51,14 @@ final class DashboardViewModel {
         self.appState = appState
     }
 
+    deinit {
+        pollTask?.cancel()
+    }
+
     // MARK: - Public
 
     func start() {
-        Task { await loadCachedThenFetch() }
+        Task { [weak self] in await self?.loadCachedThenFetch() }
         startPolling()
     }
 
@@ -52,28 +67,37 @@ final class DashboardViewModel {
         pollTask = nil
     }
 
+    /// Force a fetch regardless of the recent-fetch debounce. Used by
+    /// pull-to-refresh and the error-view retry button — when the user
+    /// explicitly asks for fresh data we don't skip it.
     func refresh() async {
-        await fetchAll()
+        await fetchAll(force: true)
     }
 
     // MARK: - Private
 
     private func loadCachedThenFetch() async {
-        // Show cached data instantly so the UI is not blank.
         if let cached = DiskCache.shared.read(key: cacheKeyPrefix + "-summary", as: AggregatedSummary.self) {
             summary = cached.data
             lastUpdated = cached.fetchedAt
             isStale = Date().timeIntervalSince(cached.fetchedAt) > staleThresholdSeconds
             loadState = .loaded
         }
-        await fetchAll()
+        await fetchAll(force: true)
     }
 
-    private func fetchAll() async {
+    /// Fetch summary/history/top (plus sync status) for the active site.
+    /// `force == false` debounces against the most recent successful fetch
+    /// so scenePhase + poll + onAppear can't triple-trigger within
+    /// `minFetchInterval` seconds.
+    private func fetchAll(force: Bool = false) async {
         guard monitor.isConnected else { return }
+        if !force, let last = lastUpdated,
+           Date().timeIntervalSince(last) < minFetchInterval {
+            return
+        }
         loadState = .loading
         do {
-            // Discover poll intervals and capture server version on first fetch.
             if serverVersion == nil {
                 if let health = try? await client.health() {
                     staleThresholdSeconds = Double(health.statsPollInterval) * 2
@@ -92,33 +116,48 @@ final class DashboardViewModel {
             summary = s
             history = h
             top = t
+            if let sync = try? await client.syncStatus() {
+                syncStatus = sync
+            }
             lastUpdated = Date()
             isStale = false
             loadState = .loaded
+            consecutiveFailures = 0
 
             DiskCache.shared.write(s, key: cacheKeyPrefix + "-summary")
             DiskCache.shared.write(h, key: cacheKeyPrefix + "-history")
             DiskCache.shared.write(t, key: cacheKeyPrefix + "-top")
         } catch {
-            // Mark stale if we have old data, otherwise show error.
+            consecutiveFailures += 1
             if summary != nil {
                 isStale = true
                 loadState = .loaded
             } else {
                 loadState = .failed(error.localizedDescription)
             }
-            await appState?.probe(site: client.site)
+            // Only re-probe site health on the first failure of a streak —
+            // otherwise a down site multiplies into health+summary+4 polls
+            // of requests per cycle.
+            if consecutiveFailures == 1 {
+                await appState?.probe(site: client.site)
+            }
         }
     }
 
+    /// Poll cadence: half the server's stats poll interval on success; doubled
+    /// each consecutive failure up to a ceiling. `[weak self]` breaks the
+    /// self ↔ task retain cycle so a replaced VM can deallocate.
     private func startPolling() {
         pollTask?.cancel()
-        pollTask = Task {
+        pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(staleThresholdSeconds / 2))
-                if !Task.isCancelled {
-                    await fetchAll()
-                }
+                guard let self else { return }
+                let base = self.staleThresholdSeconds / 2
+                let backoff = min(pow(2.0, Double(self.consecutiveFailures)), 16)
+                let interval = base * max(1, backoff)
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
+                await self.fetchAll()
             }
         }
     }

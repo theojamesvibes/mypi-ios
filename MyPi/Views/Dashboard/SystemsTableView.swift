@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SystemsTableView: View {
     let instances: [InstanceSummary]
+    var syncStatus: SyncStatus? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -17,7 +18,11 @@ struct SystemsTableView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(instances.enumerated()), id: \.element.id) { idx, instance in
-                        InstanceRow(instance: instance)
+                        InstanceRow(
+                            instance: instance,
+                            syncResult: syncStatus?.results.first(where: { $0.name == instance.name }),
+                            lastSyncAt: syncStatus?.completedAt
+                        )
                         if idx < instances.count - 1 {
                             Divider().padding(.leading)
                         }
@@ -32,6 +37,8 @@ struct SystemsTableView: View {
 
 private struct InstanceRow: View {
     let instance: InstanceSummary
+    let syncResult: InstanceSyncResult?
+    let lastSyncAt: Date?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -60,16 +67,45 @@ private struct InstanceRow: View {
                 Metric(label: "Clients", value: instance.uniqueClients.formatted())
             }
             .font(.caption)
+
+            syncLine
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
     }
 
+    /// "Synced X ago" line using the last hourly query-log sync time (not the
+    /// much-more-frequent stats poll). Falls back gracefully for servers
+    /// without /api/sync/status or sites whose sync is disabled.
+    @ViewBuilder
+    private var syncLine: some View {
+        if !instance.isActive {
+            HStack(spacing: 4) {
+                Image(systemName: "pause.circle").font(.caption2)
+                Text("Sync disabled")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        } else if let lastSync = lastSyncAt {
+            let failed = syncResult?.status == "error"
+            HStack(spacing: 4) {
+                Image(systemName: failed ? "exclamationmark.arrow.triangle.2.circlepath" : "arrow.triangle.2.circlepath")
+                    .font(.caption2)
+                Text(failed ? "Sync failed" : "Synced")
+                Text(lastSync, style: .relative)
+                Text("ago")
+            }
+            .font(.caption2)
+            .foregroundStyle(failed ? .red : .secondary)
+        }
+    }
+
     private var statusDot: some View {
         let color: Color = switch instance.status.lowercased() {
-        case "enabled": .green
-        case "disabled": .orange
-        default: .red
+        case "online", "enabled", "up", "active": .green
+        case "disabled", "paused": .orange
+        case "offline", "error", "down": .red
+        default: .gray
         }
         return Circle()
             .fill(color)

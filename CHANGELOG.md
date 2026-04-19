@@ -4,26 +4,50 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
-## [0.0.6] — 2026-04-18
+## [0.1.0] — 2026-04-19
+
+First externally-published release. Consolidates every feature, UX pass, and fix from the internal 0.0.6 iteration plus the 0.0.6 → 0.1.0 review cycle (iPad-native Dashboard, cleaner chart + filter UX, proper sync-time source, code review cleanup). A single tagged + published release kicks the GitHub Actions build workflow.
 
 ### Added
 
-- **Query Log legend** — new info button in the Query Log toolbar opens a sheet explaining what each status icon means (Permitted / Cached / Blocked) and which Pi-hole v6 status codes each one covers.
-- **Per-site connection state** — every configured site is now probed with `/api/health` and `/api/stats/summary`. The Sites list shows a colored dot + status label per row (green when reachable and authenticated, red otherwise), and Settings has a dedicated Connection section with a Status field covering all observed states (Connecting / Connected / Unauthorized / Offline / TLS error / Error / Unknown).
-- **Server Version field** in Settings — shows the real MyPi server version reported by `/api/health`, distinct from the connection Status.
-- **"Today" time range** (midnight-to-now) on Dashboard and Query Log, and it is now the default. The full option set now mirrors the MyPi web dashboard: 15m, 1h, Today, 24h, 48h, 7d, 30d. Sub-hour / "today" ranges use the server's `since=` ISO parameter so the window is wall-clock-aligned instead of drifting.
-- **Blocked stat card drill-down** — tapping the Blocked card on the Dashboard opens a list of distinct blocked domains with the latest block time and occurrence count per domain in the current range. Uses a single `/api/queries?blocked=true&page_size=500` call (already timestamp-DESC on the server) and dedupes client-side by keeping the first occurrence, so "latest per domain" falls out of the sort for free. A footer discloses when the 500-row window was truncated.
-- **Unique Clients stat card drill-down** — tapping the Unique Clients card opens a list of every client in the range with total queries, blocked queries, and last-seen time. Backed by the server's `/api/queries/clients` aggregate endpoint.
+- **iPad-native Dashboard** (`IPadDashboardView`) — 4-wide stat row, stacked Query Activity bar chart + Query Types donut side-by-side at matched heights, 3-column Top Permitted / Top Blocked / Top Clients row, Pi-hole Instances last. Mirrors the MyPi web dashboard layout.
+- **Sidebar tab style on iPad** via `.tabViewStyle(.sidebarAdaptable)` — Dashboard / Query Log / Settings live in a left sidebar; iPhone keeps the bottom tab bar unchanged.
+- **Site switcher menu** in the `.principal` toolbar slot of Dashboard, Query Log, and Settings. Renders as plain bold text with a single site; becomes a menu with a chevron when more than one site is configured.
+- **Query Log** — new pill-chip controls above the list for Filter (All / Permitted / Blocked / **Unique Clients**) and Time Range; info button opens a legend sheet explaining each status icon; `.searchable` domain / client search (server-side `?domain=` for queries; client-side filter in Unique Clients mode).
+- **Unique Clients** view — when the Filter is set to Unique Clients the list switches to per-client rows (name, IP, total queries, blocked count, last seen) backed by the server's `/api/queries/clients` aggregate endpoint.
+- **Per-site connection probing** — every configured site is probed with `/api/health` + `/api/stats/summary` on appear and on pull-to-refresh. Sites list shows a colored dot + connection-state label per row (Connected / Unauthorized / Offline / TLS error / Error / Unknown). Settings toolbar exposes a Manage Sites screen; SiteFormView has an explicit Delete Site button with a confirmation dialog.
+- **Dedicated Connection section in Settings** — Site URL above Status (color-coded dot + label covering every state), Server Version from `/api/health`, negotiated TLS version (green for CA-validated, yellow + "Self-signed (pinned)" note for self-signed trust).
+- **Shared `TimeRange` enum** mirroring the MyPi web dashboard: 15m, 1h, **Today**, 24h, 48h, 7d, 30d. Today is the default. Sub-hour / Today ranges use the server's `since=` ISO parameter so the window is wall-clock-aligned.
+- **"Synced X ago"** indicator on each Pi-hole instance row, sourced from `/api/sync/status` (the hourly query-log sync) rather than the minute-by-minute stats poll. Per-instance failure turns the row red with "Sync failed X ago".
+- **App icon** — shield-check matching the MyPi web favicon.
 
 ### Changed
 
-- **Setup sheet no longer requires a Name.** Leaving the field blank saves the site as "Home" — matches the field's placeholder and removes a pointless gate on the Save button.
-- **TLS display in Settings** now shows the negotiated TLS protocol version (captured via `URLSessionTaskTransactionMetrics.negotiatedTLSProtocolVersion`) in green for CA-validated connections. Self-signed connections show the same version in yellow with a concise "Self-signed" or "Self-signed (pinned)" note below. Previously the row just read "Full validation" / "Self-signed".
-- **Sites list rows** now lead with a status dot and show the connection label under the host, so users can see at a glance which configured sites are reachable.
-- **APIClient** switched from `hours: Int` parameters to a shared `TimeRange` enum, so UI and wire format stay in sync across views.
-- **Query history chart** replaced with a 100% stacked bar chart labeled "Query Composition" — blue permitted / red blocked segments always fill the vertical space so proportions remain readable on phone-sized layouts regardless of absolute query volume. The previous overlaid area-line rendering was hard to parse when blocked queries were a small fraction of the total.
+- **Setup sheet** — blank Name now defaults to "Home" instead of blocking Save. Self-signed TOFU path runs `health()` once instead of twice.
+- **Date parsing** — `APIClient` JSON decoder uses a custom `dateDecodingStrategy` trying four shapes (ISO8601 with/without fractional seconds, naive with/without). `HistoryBucket.timestamp`, `QueryEntry.timestamp`, `ClientSummary.lastSeen`, `InstanceSummary.lastSeenAt` are now `Date` / `Date?` decoded directly. Fixes the "2,025 yrs, 3 mths ago" relative-time bug from FastAPI's microsecond-precision timestamps.
+- **Query Log refresh** no longer clears the list before fetching — keeps the List mounted during async fetch so the pull-to-refresh gesture stays attached and "Something went wrong" doesn't flash.
+- **Query Log filter** — fixed a no-op: server takes `blocked=bool`, not `query_type=`.
+- **Pi-hole instance status dot** — `status="online"` now renders green (was previously only `"enabled"`, so every real instance showed red).
+- **Refresh cadence** — background `BGAppRefreshTask` plumbing removed. Dashboard polls every ~60s while in the foreground and refreshes on scene-phase `.active` (with a 5-second debounce against triple-firing).
+- **Dashboard layout stability** — `StatCardView` pinned to `minHeight: 96` so cards stop resizing with value length; `QueryActivityChart` takes the selected `TimeRange` as an explicit x-axis domain so a single-bucket day (e.g. just after midnight) doesn't reshape the card.
+
+### Fixed
+
+- **URLSession leak** — `APIClient` now invalidates its session in `deinit`; previously every replaced site client leaked its `URLSession` + `TLSDelegate` pair because `URLSession` retains its delegate strongly until invalidated.
+- **Dashboard poll retain cycle** — the poll `Task` now captures `self` weakly and the VM cancels it in `deinit`, so switching sites while Dashboard is visible no longer leaks the old VM + its polling task.
+- **Foreground double-fetch** — `fetchAll()` guards against triggering within 5 seconds of the previous successful fetch, so scenePhase → poll-tick → tab-re-`onAppear` can't stack three overlapping fetch cycles.
+- **Failure backoff** — after N consecutive failed fetches the poll interval doubles (capped at 16×) instead of hammering a down server at 4 req/min. Resets on first success. Also de-duped the per-failure site probe to only fire on the first failure of a streak.
+- **Disk-cache leak on site delete** — `SiteStore.delete` now removes the cached summary / history / top files for the removed site.
+- **Keychain fallback over-broad** — the `UserDefaults` fallback now only triggers on `errSecMissingEntitlement` (unsigned simulator builds) instead of any `SecItemAdd` failure.
+- **Dead code removed** — unused `APIClient.blockedQueries`, `KeychainStore.certFingerprint(for:)` getter, `StatCardView.showsDisclosure`; legacy `SiteListView` that stood alone as a tab was deleted when Sites moved into Settings; `QueryHistoryChart` and `DNSQueriesOverTimeChart` collapsed into the shared `QueryActivityChart`.
+
+### Security
+
+- Review sweep confirmed zero telemetry / analytics SDKs, zero credential logging, TLS pinning cannot be bypassed from the UI, and the API key is only transmitted via the `X-API-Key` header.
 
 ---
+
+## [0.0.5] — 2026-04-18
 
 ## [0.0.5] — 2026-04-18
 

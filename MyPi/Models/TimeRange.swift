@@ -89,4 +89,19 @@ enum TimeRange: String, CaseIterable, Identifiable, Hashable, Codable {
         return f.string(from: date)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
     }
+
+    /// Intended x-axis domain for charts rendering this range. Using this as
+    /// `chartXScale(domain:)` keeps the axis full-width even when only a few
+    /// buckets have data (e.g. just after midnight when "Today" is sparse).
+    func xDomain(now: Date = Date()) -> ClosedRange<Date> {
+        switch self {
+        case .minutes15: return now.addingTimeInterval(-15 * 60)...now
+        case .hour1:     return now.addingTimeInterval(-60 * 60)...now
+        case .today:     return Calendar.current.startOfDay(for: now)...now
+        case .hours24:   return now.addingTimeInterval(-24 * 3600)...now
+        case .hours48:   return now.addingTimeInterval(-48 * 3600)...now
+        case .days7:     return now.addingTimeInterval(-7 * 24 * 3600)...now
+        case .days30:    return now.addingTimeInterval(-30 * 24 * 3600)...now
+        }
+    }
 }

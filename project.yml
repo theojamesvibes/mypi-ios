@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.0.6"
+    MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypi
     DEVELOPMENT_TEAM: ""
@@ -42,8 +42,6 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations: {}
-        BGTaskSchedulerPermittedIdentifiers:
-          - net.myssdomain.mypi.refresh
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: false
     settings:
@@ -61,3 +59,21 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypiTests
+
+schemes:
+  MyPi:
+    build:
+      targets:
+        MyPi: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MyPiTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
