@@ -77,4 +77,4 @@ MyPi/
 
 ## Version
 
-Current release: **0.0.6**
+Current release: **0.1.0**

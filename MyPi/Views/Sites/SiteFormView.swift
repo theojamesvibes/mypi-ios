@@ -12,6 +12,7 @@ struct SiteFormView: View {
     @State private var allowSelfSigned: Bool
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showDeleteConfirm = false
 
     init(site: Site) {
         self.site = site
@@ -63,6 +64,18 @@ struct SiteFormView: View {
                     Text(msg).foregroundStyle(.red).font(.footnote)
                 }
             }
+
+            Section {
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Label("Delete Site", systemImage: "trash")
+                        Spacer()
+                    }
+                }
+            }
         }
         .navigationTitle(site.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -76,6 +89,22 @@ struct SiteFormView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "Delete \(site.name)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Site", role: .destructive) { delete() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("The site's API key and cached data will be removed from this device.")
+        }
+    }
+
+    private func delete() {
+        guard let idx = appState.sites.firstIndex(where: { $0.id == site.id }) else { return }
+        appState.deleteSite(at: IndexSet(integer: idx))
+        dismiss()
     }
 
     private var resolvedName: String {

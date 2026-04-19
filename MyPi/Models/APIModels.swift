@@ -48,7 +48,7 @@ struct InstanceSummary: Codable, Identifiable {
     let color: String?
     let isMaster: Bool
     let isActive: Bool
-    let lastSeenAt: String?
+    let lastSeenAt: Date?
     let status: String
     let dnsQueriesToday: Int
     let queriesBlocked: Int
@@ -82,14 +82,12 @@ struct HistoryResponse: Codable {
 }
 
 struct HistoryBucket: Codable, Identifiable {
-    var id: String { timestamp }
-    let timestamp: String
+    var id: Date { timestamp }
+    let timestamp: Date
     let queries: Int
     let blocked: Int
 
-    var date: Date {
-        ISO8601DateFormatter().date(from: timestamp) ?? Date()
-    }
+    var date: Date { timestamp }
 }
 
 // MARK: - Top Stats
@@ -127,17 +125,13 @@ struct ClientSummary: Decodable, Identifiable {
     let clientName: String
     let totalQueries: Int
     let blockedQueries: Int
-    let lastSeen: String
+    let lastSeen: Date?
 
     var id: String { clientIp.isEmpty ? clientName : clientIp }
 
     var displayName: String {
         if !clientName.isEmpty { return clientName }
         return clientIp.isEmpty ? "Unknown" : clientIp
-    }
-
-    var lastSeenDate: Date {
-        ISO8601DateFormatter().date(from: lastSeen) ?? Date.distantPast
     }
 
     enum CodingKeys: String, CodingKey {
@@ -170,7 +164,7 @@ struct QueryPage: Decodable {
 
 struct QueryEntry: Decodable, Identifiable {
     let id: String
-    let timestamp: String
+    let timestamp: Date
     let domain: String
     let clientIp: String
     let clientName: String?
@@ -186,9 +180,7 @@ struct QueryEntry: Decodable, Identifiable {
         case instanceName = "instance_name"
     }
 
-    var date: Date {
-        ISO8601DateFormatter().date(from: timestamp) ?? Date()
-    }
+    var date: Date { timestamp }
 
     var isBlocked: Bool {
         let blocked: Set<String> = [
@@ -206,6 +198,32 @@ struct QueryEntry: Decodable, Identifiable {
         if isCached { return "blue" }
         return "green"
     }
+}
+
+// MARK: - Sync
+
+/// Result of the last (or in-progress) query-log sync run. The server's sync
+/// is global — one run covers every instance — so `completedAt` is the same
+/// for every instance, while per-instance success/failure is in `results`.
+struct SyncStatus: Decodable {
+    let status: String            // idle / running / success / error
+    let startedAt: Date?
+    let completedAt: Date?
+    let master: String?
+    let results: [InstanceSyncResult]
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status, master, results, error
+        case startedAt = "started_at"
+        case completedAt = "completed_at"
+    }
+}
+
+struct InstanceSyncResult: Decodable {
+    let name: String
+    let status: String            // success / error
+    let error: String?
 }
 
 // MARK: - Error

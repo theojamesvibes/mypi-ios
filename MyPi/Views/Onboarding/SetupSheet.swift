@@ -111,29 +111,24 @@ struct SetupSheet: View {
         )
         let client = APIClient(site: draft)
 
-        // Handle TOFU cert pinning.
+        // Connection test (unauthenticated). In self-signed mode the TLS
+        // delegate captures the presented cert's fingerprint via the TOFU
+        // callback; we then stop here to let the user confirm. Otherwise
+        // full OS trust ran during this same call, so we can move on to the
+        // authenticated check without re-hitting /api/health.
+        var capturedFingerprint: String?
         if allowSelfSigned {
-            var capturedFingerprint: String?
             client.onUntrustedCertificate = { fp in capturedFingerprint = fp }
-            do {
-                _ = try await client.health()
-            } catch {
-                // Likely a connection error unrelated to TLS.
-                errorMessage = "Could not connect: \(error.localizedDescription)"
-                return
-            }
-            if let fp = capturedFingerprint {
-                pendingFingerprint = fp
-                showCertTrust = true
-                return
-            }
         }
-
-        // Standard connection test (unauthenticated).
         do {
             _ = try await client.health()
         } catch {
-            errorMessage = "Connection failed: \(error.localizedDescription)"
+            errorMessage = "Could not connect: \(error.localizedDescription)"
+            return
+        }
+        if let fp = capturedFingerprint {
+            pendingFingerprint = fp
+            showCertTrust = true
             return
         }
 

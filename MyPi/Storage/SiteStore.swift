@@ -49,5 +49,11 @@ final class SiteStore {
         try? JSONEncoder().encode(renumbered).write(to: fileURL, options: .atomic)
         KeychainStore.shared.deleteAPIKey(for: id)
         KeychainStore.shared.deleteCertFingerprint(for: id)
+        // Remove the disk-cache files for this site so stale responses don't
+        // linger forever after the site is deleted.
+        let prefix = "dashboard-\(id.uuidString)"
+        DiskCache.shared.delete(key: prefix + "-summary")
+        DiskCache.shared.delete(key: prefix + "-history")
+        DiskCache.shared.delete(key: prefix + "-top")
     }
 }
