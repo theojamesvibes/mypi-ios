@@ -78,8 +78,12 @@ struct SiteFormView: View {
         }
     }
 
+    private var resolvedName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Home" : trimmed
+    }
+
     private var isFormValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
         URL(string: urlString) != nil
     }
 
@@ -95,7 +99,7 @@ struct SiteFormView: View {
 
         let updated = Site(
             id: site.id,
-            name: name.trimmingCharacters(in: .whitespaces),
+            name: resolvedName,
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: site.pinnedCertFingerprint,

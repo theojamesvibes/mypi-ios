@@ -120,6 +120,35 @@ struct TopClient: Codable, Identifiable {
     let count: Int
 }
 
+// MARK: - Client Summary (drill-down)
+
+struct ClientSummary: Decodable, Identifiable {
+    let clientIp: String
+    let clientName: String
+    let totalQueries: Int
+    let blockedQueries: Int
+    let lastSeen: String
+
+    var id: String { clientIp.isEmpty ? clientName : clientIp }
+
+    var displayName: String {
+        if !clientName.isEmpty { return clientName }
+        return clientIp.isEmpty ? "Unknown" : clientIp
+    }
+
+    var lastSeenDate: Date {
+        ISO8601DateFormatter().date(from: lastSeen) ?? Date.distantPast
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case clientIp = "client_ip"
+        case clientName = "client_name"
+        case totalQueries = "total_queries"
+        case blockedQueries = "blocked_queries"
+        case lastSeen = "last_seen"
+    }
+}
+
 // MARK: - Query Log
 
 struct QueryPage: Decodable {
