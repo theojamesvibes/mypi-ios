@@ -8,6 +8,7 @@ Native iOS/iPadOS companion app for [MyPi](https://github.com/theojamesvibes/myp
 - Shared time-range picker on Dashboard and Query Log: **15m, 1h, Today, 24h, 48h, 7d, 30d** — mirrors the MyPi web dashboard, defaults to **Today**
 - Query log with filtering (all / permitted / blocked / cached) and an in-app legend for what each status icon means
 - Multi-site support — manage multiple MyPi servers (e.g. home + office) with per-site connection indicators (green = reachable and authenticated, red = not)
+- Swipe left/right on iPhone to move between Dashboard / Query Log / Settings; iPad uses the adaptive sidebar
 - Secure Keychain storage for API keys and TLS certificate fingerprints
 - Full TLS validation by default; opt-in self-signed support with TOFU cert pinning; Settings shows the negotiated TLS protocol version
 - Connection Status and Server Version surfaced in Settings, with every observable state (Connecting / Connected / Unauthorized / Offline / TLS error / Error)
@@ -77,4 +78,4 @@ MyPi/
 
 ## Version
 
-Current release: **0.1.0**
+Current release: **0.1.1**
