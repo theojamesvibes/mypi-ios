@@ -55,23 +55,49 @@ private struct EmptyStateView: View {
 
 private struct MainTabView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.horizontalSizeClass) private var hSize
+    @State private var selectedTab: TabID = .dashboard
+
+    private enum TabID: Int, Hashable, CaseIterable {
+        case dashboard, queryLog, settings
+    }
 
     var body: some View {
-        TabView {
-            Tab("Dashboard", systemImage: "chart.bar.fill") {
+        TabView(selection: $selectedTab) {
+            Tab("Dashboard", systemImage: "chart.bar.fill", value: TabID.dashboard) {
                 if let vm = appState.dashboardVM {
                     DashboardView(vm: vm)
                 }
             }
-            Tab("Query Log", systemImage: "list.bullet") {
+            Tab("Query Log", systemImage: "list.bullet", value: TabID.queryLog) {
                 if let vm = appState.queryLogVM {
                     QueryLogView(vm: vm)
                 }
             }
-            Tab("Settings", systemImage: "gear") {
+            Tab("Settings", systemImage: "gear", value: TabID.settings) {
                 AppSettingsView()
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        // Horizontal swipe switches tabs. Skipped on iPad where the
+        // sidebar owns horizontal drags and mis-fires would be disruptive.
+        // simultaneousGesture so List/ScrollView verticals still work; the
+        // |dx| > |dy| check filters vertical scrolls out.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    guard hSize == .compact else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > abs(dy) * 1.5 else { return }
+                    let all = TabID.allCases
+                    guard let idx = all.firstIndex(of: selectedTab) else { return }
+                    if dx < 0, idx < all.count - 1 {
+                        selectedTab = all[idx + 1]
+                    } else if dx > 0, idx > 0 {
+                        selectedTab = all[idx - 1]
+                    }
+                }
+        )
     }
 }

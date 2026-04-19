@@ -98,13 +98,13 @@ final class DashboardViewModel {
         }
         loadState = .loading
         do {
-            if serverVersion == nil {
-                if let health = try? await client.health() {
-                    staleThresholdSeconds = Double(health.statsPollInterval) * 2
-                    serverVersion = health.version
-                    if let appState, let site = appState.activeSite, site.id == client.site.id {
-                        appState.connectionStates[site.id] = .connected(serverVersion: health.version)
-                    }
+            // Re-fetch /api/health every cycle so Settings reflects the live
+            // server version if the server is upgraded under us.
+            if let health = try? await client.health() {
+                staleThresholdSeconds = Double(health.statsPollInterval) * 2
+                serverVersion = health.version
+                if let appState, let site = appState.activeSite, site.id == client.site.id {
+                    appState.connectionStates[site.id] = .connected(serverVersion: health.version)
                 }
             }
 

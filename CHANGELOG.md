@@ -4,6 +4,19 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.1] — 2026-04-19
+
+### Added
+
+- **Swipe between tabs on iPhone** — horizontal swipe on the main view switches between Dashboard / Query Log / Settings. Skipped on iPad where the sidebar already handles horizontal drags.
+
+### Changed
+
+- **Server version refresh** — `/api/health` is now re-fetched on every Dashboard poll cycle (and every pull-to-refresh) instead of only at startup, so Settings reflects the live server version after the server is upgraded without needing an app restart. Also keeps the cached connection state fresh.
+- **User-script sandboxing enabled** (`ENABLE_USER_SCRIPT_SANDBOXING = YES`). The app has no custom Run Script phases, so this is a no-op flip that silences the Xcode recommendation and pre-empts a future Xcode default change.
+
+---
+
 ## [0.1.0] — 2026-04-19
 
 First externally-published release. Consolidates every feature, UX pass, and fix from the internal 0.0.6 iteration plus the 0.0.6 → 0.1.0 review cycle (iPad-native Dashboard, cleaner chart + filter UX, proper sync-time source, code review cleanup). A single tagged + published release kicks the GitHub Actions build workflow.
