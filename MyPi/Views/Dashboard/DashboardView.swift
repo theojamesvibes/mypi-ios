@@ -19,6 +19,22 @@ struct DashboardView: View {
     private var phoneBody: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
+                LastUpdatedLabel(lastUpdated: vm.lastUpdated)
+                    .padding(.top, 4)
+
+                // Gate on vm.isSiteUnreachable so the banner only appears
+                // once the VM has confirmed ≥ 2 consecutive fetch failures.
+                // A one-off transient error leaves state-based .error behind
+                // but we don't trust it until the VM agrees.
+                if vm.isSiteUnreachable {
+                    let state = appState.connectionStates[vm.site.id] ?? .unknown
+                    SiteStatusBanner(
+                        siteName: vm.site.name,
+                        state: state,
+                        retryIntervalSeconds: vm.currentPollIntervalSeconds
+                    )
+                }
+
                 if let lastUpdated = vm.lastUpdated, vm.isStale {
                     StaleDataBanner(lastUpdated: lastUpdated)
                 }

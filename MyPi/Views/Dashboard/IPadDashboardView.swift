@@ -10,6 +10,18 @@ struct IPadDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                LastUpdatedLabel(lastUpdated: vm.lastUpdated)
+                    .padding(.top, 4)
+
+                if vm.isSiteUnreachable {
+                    let state = appState.connectionStates[vm.site.id] ?? .unknown
+                    SiteStatusBanner(
+                        siteName: vm.site.name,
+                        state: state,
+                        retryIntervalSeconds: vm.currentPollIntervalSeconds
+                    )
+                }
+
                 if let lastUpdated = vm.lastUpdated, vm.isStale {
                     StaleDataBanner(lastUpdated: lastUpdated)
                 }

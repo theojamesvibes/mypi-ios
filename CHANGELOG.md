@@ -4,6 +4,31 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.2] — 2026-04-21
+
+### Added
+
+- **Per-site view model cache** — Dashboard and Query Log view models now persist per site for the lifetime of the app. Switching sites reveals the other site's in-memory state instantly instead of tearing everything down and refetching. Each view is pinned with `.id(site.id)` so SwiftUI fires the correct `.onAppear` / `.onDisappear` pair when the active site changes, so the replaced poll task actually stops.
+- **Expanded offline cache** — `loadCachedThenFetch()` now hydrates `history`, `top`, and `syncStatus` from disk in addition to `summary`, and Query Log persists the first page of queries / clients per filter+range. A cold launch against an unreachable site renders the last-known dashboard + query log instead of a spinning wheel.
+- **`LastUpdatedLabel`** — always-visible "Updated X ago" label at the top of Dashboard and Query Log. Separate from the existing `StaleDataBanner`, which stays red-and-alarming for the >2× poll-interval case. Gives the user a neutral freshness signal on every pull-to-refresh.
+- **`SiteStatusBanner`** — shown on Dashboard and Query Log when `connectionStates[activeSite]` is anything other than `.connected` / `.unknown` / `.probing`. Message reads e.g. "'Home' is currently unreachable — retrying every 60s". The retry cadence is the Dashboard VM's effective poll interval (including failure backoff), so the user sees the real next-attempt time as the backoff doubles.
+- **`currentPollIntervalSeconds`** on `DashboardViewModel` — exposes the live `staleThresholdSeconds/2 × backoff` cadence so the banner and future diagnostics can read it without having to replicate the formula.
+
+### Changed
+
+- **Query Log search covers every field** — the search bar is now just labeled "Search" and filters locally across `domain`, `client_ip`, `client_name`, `status`, and `instance_name`. Replaces the previous server-side `?domain=` filter that only matched domains and left "Search domains" as the permanent placeholder. Local filtering means the search covers whatever pages have been loaded; the "load more" sentinel is hidden while a search is active because paginating against the server can't expand a local match set.
+- **Query Log refresh failures don't replace the list** — a failed fetch with existing rows keeps the rows visible (and the pull-to-refresh gesture attached) instead of swapping in `ErrorView`. ErrorView only appears on a cold load with no cached data. Mirrors what the Dashboard already does and matches the user expectation that refresh on an unreachable site shouldn't destroy what's on screen.
+- **`QueryEntry`, `ClientSummary`, `SyncStatus`, `InstanceSyncResult`** — promoted from `Decodable` to `Codable` so the disk cache can round-trip them.
+
+### Fixed
+
+- **"Spinning wheel on site switch"** — caused by (a) fresh VMs created on every `activeSiteChanged()` losing prior in-memory state, and (b) `loadCachedThenFetch()` only rehydrating `summary` from disk (not `history` / `top`). Now covered by the per-site VM cache + expanded hydration above.
+- **"Pull-to-refresh shows orange-exclamation error, then Try Again works"** — the Dashboard already kept cached data on refresh failure, but with no summary cached yet the initial refresh fell through to `.failed` → `ErrorView`. With the expanded hydration this only happens on a first-ever visit with zero prior state.
+- **False "unreachable" banner on a single transient failure** — `fetchAll()` used to call `appState.probe(site:)` on the first failure of a streak, which fired two more requests against a possibly-flaky path and flipped `connectionStates[site]` to `.error` / `.offline` / etc. A one-off pull-to-refresh hiccup (DNS blip, transient timeout) therefore painted the unreachable banner until the next successful poll ~60–120s later. Now: (a) `consecutiveFailures` must reach ≥ 2 before we touch the connection state at all, (b) the error is categorized inline from the caught exception — no extra request — and (c) the Dashboard / Query Log banner visibility is gated on `vm.isSiteUnreachable` (the VM-local failure streak) rather than raw connection state, so a stale `.error` left behind by the initial probe can't flash the banner either. `isStale` is also only flipped to `true` on failure if the data is genuinely older than the stale threshold.
+- **Banner flash on site switch** — if the cached VM for a site already had `consecutiveFailures >= 2` from a previous session, the banner would paint for one frame on site switch before the fresh fetch landed and cleared it. `DashboardViewModel.start()` now opens a 5-second "startup grace" window during which `isSiteUnreachable` reports false regardless of the failure count, and the UI shows cached data silently while the refresh is in flight. If the site is genuinely still down after the grace + another confirmed failure, the banner appears normally.
+
+---
+
 ## [0.1.1] — 2026-04-19
 
 ### Added

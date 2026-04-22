@@ -2,11 +2,13 @@ import SwiftUI
 
 struct QueryLogView: View {
     @Bindable var vm: QueryLogViewModel
+    @Environment(AppState.self) private var appState
     @State private var showLegend = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                header
                 QueryFilterChips(vm: vm)
                 Divider()
                 listBody
@@ -29,26 +31,34 @@ struct QueryLogView: View {
             .searchable(
                 text: $vm.searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: vm.isClientsMode ? "Search clients" : "Search domains"
+                prompt: "Search"
             )
-            .onSubmit(of: .search) {
-                if !vm.isClientsMode {
-                    Task { await vm.refresh() }
-                }
-            }
-            .onChange(of: vm.searchText) { _, new in
-                // Clearing the search in queries-mode should re-fetch without
-                // the domain filter so the full list returns without requiring
-                // a manual Submit.
-                if !vm.isClientsMode, new.isEmpty {
-                    Task { await vm.refresh() }
-                }
-            }
             .sheet(isPresented: $showLegend) {
                 QueryLegendSheet()
             }
         }
         .task { await vm.loadInitial() }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        VStack(spacing: 8) {
+            LastUpdatedLabel(lastUpdated: vm.lastUpdated)
+                .padding(.top, 4)
+            // Same confidence gate as Dashboard — only show the banner once
+            // the active-site Dashboard VM has confirmed ≥ 2 consecutive
+            // failures. The QueryLog VM itself doesn't poll, so we lean on
+            // the Dashboard VM's failure streak as the single source of
+            // truth for "is the site actually down."
+            if let dashVM = appState.dashboardVM, dashVM.isSiteUnreachable {
+                let state = appState.connectionStates[vm.site.id] ?? .unknown
+                SiteStatusBanner(
+                    siteName: vm.site.name,
+                    state: state,
+                    retryIntervalSeconds: dashVM.currentPollIntervalSeconds
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -74,12 +84,17 @@ struct QueryLogView: View {
                 systemImage: "magnifyingglass",
                 description: Text("No queries match the current filter.")
             )
+        } else if vm.filteredQueries.isEmpty && !vm.searchText.isEmpty {
+            ContentUnavailableView.search(text: vm.searchText)
         } else {
             List {
-                ForEach(vm.queries) { query in
+                ForEach(vm.filteredQueries) { query in
                     QueryRowView(query: query)
                 }
-                if vm.hasMore {
+                // Hide the infinite-scroll sentinel while a search is active
+                // — loading more server pages won't expand what the local
+                // filter matches in any useful way and it confuses the UI.
+                if vm.hasMore, vm.searchText.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .onAppear {
