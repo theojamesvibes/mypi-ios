@@ -6,8 +6,9 @@ Native iOS/iPadOS companion app for [MyPi](https://github.com/theojamesvibes/myp
 
 - Dashboard with live stat cards (tap **Blocked** or **Unique Clients** to drill into per-domain / per-client detail), 100% stacked query-composition chart, top domains/clients, and per-instance systems table
 - Shared time-range picker on Dashboard and Query Log: **15m, 1h, Today, 24h, 48h, 7d, 30d** — mirrors the MyPi web dashboard, defaults to **Today**
-- Query log with filtering (all / permitted / blocked / cached) and an in-app legend for what each status icon means
-- Multi-site support — manage multiple MyPi servers (e.g. home + office) with per-site connection indicators (green = reachable and authenticated, red = not)
+- Query log with filtering (all / permitted / blocked / cached) and an in-app legend for what each status icon means; the search bar filters locally across domain, client IP, client name, status, and instance name
+- Multi-site support — manage multiple MyPi servers (e.g. home + office) with per-site connection indicators (green = reachable and authenticated, red = not). Switching sites is instant — Dashboard and Query Log view models are cached per site so the prior state is still on screen
+- Always-visible "Updated X ago" label at the top of Dashboard and Query Log; a banner appears when the active site is unreachable, showing the retry cadence
 - Swipe left/right on iPhone to move between Dashboard / Query Log / Settings; iPad uses the adaptive sidebar
 - Secure Keychain storage for API keys and TLS certificate fingerprints
 - Full TLS validation by default; opt-in self-signed support with TOFU cert pinning; Settings shows the negotiated TLS protocol version
@@ -78,4 +79,4 @@ MyPi/
 
 ## Version
 
-Current release: **0.1.1**
+Current release: **0.1.2**

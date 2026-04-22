@@ -11,6 +11,7 @@ final class QueryLogViewModel {
     var hasMore: Bool = false
     var errorMessage: String?
     var searchText: String = ""
+    var lastUpdated: Date?
 
     var filter: QueryFilter = .all {
         didSet { Task { await reset() } }
@@ -20,6 +21,23 @@ final class QueryLogViewModel {
     }
 
     var isClientsMode: Bool { filter.isClientsMode }
+
+    var site: Site { client.site }
+
+    /// Local search over every user-visible field so "Search" in the nav bar
+    /// covers domain, client IP / name, status, and the Pi-hole instance
+    /// name — not just domain (which was the old server-side filter).
+    var filteredQueries: [QueryEntry] {
+        let q = searchText.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return queries }
+        return queries.filter { entry in
+            entry.domain.localizedCaseInsensitiveContains(q) ||
+            entry.clientIp.localizedCaseInsensitiveContains(q) ||
+            (entry.clientName ?? "").localizedCaseInsensitiveContains(q) ||
+            entry.status.localizedCaseInsensitiveContains(q) ||
+            (entry.instanceName ?? "").localizedCaseInsensitiveContains(q)
+        }
+    }
 
     /// Clients mode filters locally on name/IP since `/api/queries/clients`
     /// doesn't take a search param.
@@ -38,6 +56,11 @@ final class QueryLogViewModel {
     private var currentPage: Int = 1
     private var totalPages: Int = 1
     private let pageSize: Int = 50
+    private var hasHydratedFromCache = false
+
+    private var cacheKeyPrefix: String {
+        "querylog-\(client.site.id.uuidString)"
+    }
 
     init(client: APIClient) {
         self.client = client
@@ -46,7 +69,35 @@ final class QueryLogViewModel {
     // MARK: - Public
 
     func loadInitial() async {
+        hydrateFromCacheIfNeeded()
         await reset()
+    }
+
+    /// One-shot disk-cache hydration for the first page (per filter/range).
+    /// Shows *something* immediately on a cold site visit even if the server
+    /// is unreachable — reset() then races a fresh fetch against it.
+    private func hydrateFromCacheIfNeeded() {
+        guard !hasHydratedFromCache else { return }
+        hasHydratedFromCache = true
+        if isClientsMode {
+            if clients.isEmpty,
+               let cached = DiskCache.shared.read(
+                   key: cacheKeyPrefix + "-clients-\(selectedRange.id)",
+                   as: [ClientSummary].self
+               ) {
+                clients = cached.data
+                lastUpdated = cached.fetchedAt
+            }
+        } else {
+            if queries.isEmpty,
+               let cached = DiskCache.shared.read(
+                   key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)",
+                   as: [QueryEntry].self
+               ) {
+                queries = cached.data
+                lastUpdated = cached.fetchedAt
+            }
+        }
     }
 
     func loadNextPage() async {
@@ -75,6 +126,9 @@ final class QueryLogViewModel {
         }
     }
 
+    /// Server-side `domain=` search was removed so the single Search box in
+    /// the nav bar covers every field (domain, client IP/name, status,
+    /// instance) locally. Pagination + filter/range still go to the server.
     private func fetchPage(_ page: Int, appending: Bool) async {
         isLoading = true
         errorMessage = nil
@@ -84,7 +138,7 @@ final class QueryLogViewModel {
                 pageSize: pageSize,
                 range: selectedRange,
                 filter: filter,
-                domain: searchText
+                domain: nil
             )
             if appending {
                 queries.append(contentsOf: result.items)
@@ -94,8 +148,20 @@ final class QueryLogViewModel {
             }
             totalPages = result.pages
             hasMore = page < result.pages
+            lastUpdated = Date()
+            if page == 1 {
+                DiskCache.shared.write(
+                    queries,
+                    key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)"
+                )
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            // Keep existing rows visible if we already have data — a failed
+            // refresh on an unreachable site should fall back to cache, not
+            // replace the list with an error screen.
+            if queries.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }
@@ -107,8 +173,15 @@ final class QueryLogViewModel {
             clients = try await client.clients(range: selectedRange)
             queries = []
             hasMore = false
+            lastUpdated = Date()
+            DiskCache.shared.write(
+                clients,
+                key: cacheKeyPrefix + "-clients-\(selectedRange.id)"
+            )
         } catch {
-            errorMessage = error.localizedDescription
+            if clients.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }

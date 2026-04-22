@@ -26,8 +26,18 @@ final class AppState {
     // MARK: - Per-site clients, view models, and connection state
 
     private var clientsByID: [UUID: APIClient] = [:]
-    private(set) var dashboardVM: DashboardViewModel?
-    private(set) var queryLogVM: QueryLogViewModel?
+    private var dashboardVMsByID: [UUID: DashboardViewModel] = [:]
+    private var queryLogVMsByID: [UUID: QueryLogViewModel] = [:]
+
+    var dashboardVM: DashboardViewModel? {
+        guard let site = activeSite else { return nil }
+        return dashboardVMsByID[site.id]
+    }
+
+    var queryLogVM: QueryLogViewModel? {
+        guard let site = activeSite else { return nil }
+        return queryLogVMsByID[site.id]
+    }
 
     /// Observed connection state per site (used by Settings and the Sites list).
     var connectionStates: [UUID: SiteConnectionState] = [:]
@@ -56,8 +66,11 @@ final class AppState {
     func updateSite(_ site: Site) {
         SiteStore.shared.save(site)
         sites = SiteStore.shared.load()
-        // Invalidate client so it picks up new settings.
+        // Invalidate client + VMs so they pick up new settings.
         clientsByID[site.id] = nil
+        dashboardVMsByID[site.id]?.stop()
+        dashboardVMsByID[site.id] = nil
+        queryLogVMsByID[site.id] = nil
         connectionStates[site.id] = .unknown
         activeSiteChanged()
     }
@@ -67,13 +80,14 @@ final class AppState {
             let site = sites[idx]
             SiteStore.shared.delete(id: site.id)
             clientsByID[site.id] = nil
+            dashboardVMsByID[site.id]?.stop()
+            dashboardVMsByID[site.id] = nil
+            queryLogVMsByID[site.id] = nil
             connectionStates[site.id] = nil
         }
         sites = SiteStore.shared.load()
         if sites.isEmpty {
             activeSiteIndex = nil
-            dashboardVM = nil
-            queryLogVM = nil
             showSetupSheet = true
         } else {
             activeSiteIndex = min(activeSiteIndex ?? 0, sites.count - 1)
@@ -151,15 +165,19 @@ final class AppState {
 
     // MARK: - Private
 
+    /// Re-uses previously-built view models per site so switching sites
+    /// doesn't throw away in-memory dashboard/query-log state. Only the first
+    /// time we see a site do we instantiate fresh VMs (they'll rehydrate from
+    /// disk cache if data exists).
     private func activeSiteChanged() {
-        guard let site = activeSite else {
-            dashboardVM = nil
-            queryLogVM = nil
-            return
-        }
+        guard let site = activeSite else { return }
         let c = client(for: site)
-        dashboardVM = DashboardViewModel(client: c, appState: self)
-        queryLogVM = QueryLogViewModel(client: c)
+        if dashboardVMsByID[site.id] == nil {
+            dashboardVMsByID[site.id] = DashboardViewModel(client: c, appState: self)
+        }
+        if queryLogVMsByID[site.id] == nil {
+            queryLogVMsByID[site.id] = QueryLogViewModel(client: c)
+        }
         Task { await probe(site: site) }
     }
 }

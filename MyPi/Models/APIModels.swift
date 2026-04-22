@@ -120,7 +120,7 @@ struct TopClient: Codable, Identifiable {
 
 // MARK: - Client Summary (drill-down)
 
-struct ClientSummary: Decodable, Identifiable {
+struct ClientSummary: Codable, Identifiable {
     let clientIp: String
     let clientName: String
     let totalQueries: Int
@@ -162,7 +162,7 @@ struct QueryPage: Decodable {
     }
 }
 
-struct QueryEntry: Decodable, Identifiable {
+struct QueryEntry: Codable, Identifiable {
     let id: String
     let timestamp: Date
     let domain: String
@@ -205,7 +205,7 @@ struct QueryEntry: Decodable, Identifiable {
 /// Result of the last (or in-progress) query-log sync run. The server's sync
 /// is global — one run covers every instance — so `completedAt` is the same
 /// for every instance, while per-instance success/failure is in `results`.
-struct SyncStatus: Decodable {
+struct SyncStatus: Codable {
     let status: String            // idle / running / success / error
     let startedAt: Date?
     let completedAt: Date?
@@ -220,7 +220,7 @@ struct SyncStatus: Decodable {
     }
 }
 
-struct InstanceSyncResult: Decodable {
+struct InstanceSyncResult: Codable {
     let name: String
     let status: String            // success / error
     let error: String?

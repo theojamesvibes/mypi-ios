@@ -66,12 +66,18 @@ private struct MainTabView: View {
         TabView(selection: $selectedTab) {
             Tab("Dashboard", systemImage: "chart.bar.fill", value: TabID.dashboard) {
                 if let vm = appState.dashboardVM {
+                    // .id(site) forces SwiftUI to rebuild the view when the
+                    // active site changes, firing the old vm's .onDisappear
+                    // (stopping its poll) and the new vm's .onAppear so the
+                    // two site states don't interleave.
                     DashboardView(vm: vm)
+                        .id(vm.site.id)
                 }
             }
             Tab("Query Log", systemImage: "list.bullet", value: TabID.queryLog) {
                 if let vm = appState.queryLogVM {
                     QueryLogView(vm: vm)
+                        .id(vm.site.id)
                 }
             }
             Tab("Settings", systemImage: "gear", value: TabID.settings) {
