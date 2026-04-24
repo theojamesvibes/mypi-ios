@@ -4,6 +4,23 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.9] — 2026-04-24
+
+Response to the external Grok architecture + security audit of 0.1.6 (filed at [`docs/reviews/2026-04-24-grok-audit.md`](docs/reviews/2026-04-24-grok-audit.md) with per-recommendation disposition). No critical findings from that review; this release folds in the small-but-worth-it suggestions.
+
+### Added
+
+- **Re-pin Certificate** button on the Settings TLS row for self-signed sites. Reruns a one-shot TOFU handshake against the live server (temporary `APIClient` with `allowSelfSigned: true` and no pin, captures the presented leaf via `TLSDelegate.onUntrustedCertificate`), shows the new SHA-256 fingerprint in `CertTrustSheet`, and on explicit approval writes the new pin to Keychain via `AppState.updateSite`. Covers legitimate server-cert rotation without forcing a delete + re-add. Hidden on demo sites (no real cert to pin) and on sites that aren't self-signed.
+- **Read-only API key hint** in the `SetupSheet` API Key section footer. Least-privilege nudge since the app only ever reads data — a read-only key is sufficient and limits blast radius if the key is disclosed.
+- **README Security section** (distinct from Privacy) documenting Keychain scope + accessibility class, TOFU pin behavior, strict ATS, and the clean-on-delete guarantees. Linked to the Grok audit for anyone who wants the outside-review context.
+- **`docs/reviews/2026-04-24-grok-audit.md`** — full audit text plus a per-recommendation "implemented / deferred / declined with reason" table.
+
+### Fixed
+
+- **iPad Query Types donut legend wraps to two lines.** `Forwarded`, `Cached`, and `Blocked` were pushing the percent column and wrapping the label onto a second line because the legend fought a `Spacer()` for width in the ~130pt iPad card slot. Switched to a two-column `Grid` with `lineLimit(1)` + `minimumScaleFactor(0.85)` on the label: percents line up cleanly on the right, labels stay single-line even on the narrowest card size, and at worst the label shrinks 15% which is imperceptible.
+
+---
+
 ## [0.1.8] — 2026-04-24
 
 ### Added

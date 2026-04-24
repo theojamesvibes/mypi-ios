@@ -52,16 +52,29 @@ struct QueryTypesDonut: View {
                 .chartLegend(.hidden)
                 .frame(width: 140, height: 140)
 
-                VStack(alignment: .leading, spacing: 6) {
+                // Two-column Grid so labels and percents line up vertically
+                // without fighting over `Spacer()` width. The plain HStack
+                // version wrapped "Forwarded", "Cached", and "Blocked" onto
+                // two lines once the percent text took its slot — the
+                // fixed-width iPad card left ~130pt for the legend column
+                // and a caption-sized "Forwarded" + "43.3%" combo didn't
+                // fit. `.lineLimit(1)` + `.minimumScaleFactor(0.85)` on the
+                // label keeps it single-line in the worst case without
+                // truncating visibly.
+                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                     ForEach(slices) { slice in
-                        HStack(spacing: 8) {
-                            Circle().fill(slice.color).frame(width: 8, height: 8)
-                            Text(slice.label)
-                                .font(.caption)
-                            Spacer()
+                        GridRow {
+                            HStack(spacing: 8) {
+                                Circle().fill(slice.color).frame(width: 8, height: 8)
+                                Text(slice.label)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
+                            }
                             Text(percent(for: slice))
                                 .font(.caption).monospacedDigit()
                                 .foregroundStyle(.secondary)
+                                .gridColumnAlignment(.trailing)
                         }
                     }
                 }
