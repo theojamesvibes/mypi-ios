@@ -160,7 +160,7 @@ final class QueryLogViewModel {
             // refresh on an unreachable site should fall back to cache, not
             // replace the list with an error screen.
             if queries.isEmpty {
-                errorMessage = error.localizedDescription
+                errorMessage = ErrorMessage.userFacing(error)
             }
         }
         isLoading = false
@@ -180,7 +180,7 @@ final class QueryLogViewModel {
             )
         } catch {
             if clients.isEmpty {
-                errorMessage = error.localizedDescription
+                errorMessage = ErrorMessage.userFacing(error)
             }
         }
         isLoading = false

@@ -123,7 +123,7 @@ struct SetupSheet: View {
         do {
             _ = try await client.health()
         } catch {
-            errorMessage = "Could not connect: \(error.localizedDescription)"
+            errorMessage = "Could not connect: \(ErrorMessage.userFacing(error))"
             return
         }
         if let fp = capturedFingerprint {
@@ -139,7 +139,7 @@ struct SetupSheet: View {
             errorMessage = "API key rejected: \(apiErr.detail)"
             return
         } catch {
-            errorMessage = "Authentication check failed: \(error.localizedDescription)"
+            errorMessage = "Authentication check failed: \(ErrorMessage.userFacing(error))"
             return
         }
 
@@ -165,7 +165,7 @@ struct SetupSheet: View {
             errorMessage = "API key rejected: \(apiErr.detail)"
             return
         } catch {
-            errorMessage = "Authentication check failed: \(error.localizedDescription)"
+            errorMessage = "Authentication check failed: \(ErrorMessage.userFacing(error))"
             return
         }
         commitSite(pinnedFingerprint: pinnedFingerprint)
@@ -179,9 +179,17 @@ struct SetupSheet: View {
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: pinnedFingerprint
         )
-        KeychainStore.shared.saveAPIKey(apiKey.trimmingCharacters(in: .whitespaces), for: site.id)
-        if let fp = pinnedFingerprint {
-            KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
+        do {
+            try KeychainStore.shared.saveAPIKey(apiKey.trimmingCharacters(in: .whitespaces), for: site.id)
+            if let fp = pinnedFingerprint {
+                try KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
+            }
+        } catch {
+            // Don't persist the Site record if its secrets can't be stored —
+            // that leaves the user with an un-authenticatable site and no
+            // clear way to fix it. Surface the Keychain error instead.
+            errorMessage = "Couldn't save credentials: \(error.localizedDescription)"
+            return
         }
         appState.addSite(site)
         dismiss()

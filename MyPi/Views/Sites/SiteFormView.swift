@@ -13,6 +13,8 @@ struct SiteFormView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showDeleteConfirm = false
+    @State private var pendingFingerprint: String?
+    @State private var showCertTrust: Bool = false
 
     init(site: Site) {
         self.site = site
@@ -57,6 +59,13 @@ struct SiteFormView: View {
                             .textSelection(.enabled)
                     }
                 }
+                if retrustRequired {
+                    Text("Saving will require re-approving the server's certificate because the URL or self-signed setting changed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("Enable if your server uses a self-signed or internal CA certificate.")
             }
 
             if let msg = errorMessage {
@@ -89,6 +98,17 @@ struct SiteFormView: View {
                 }
             }
         }
+        .sheet(isPresented: $showCertTrust) {
+            if let fp = pendingFingerprint {
+                CertTrustSheet(fingerprint: fp) { trusted in
+                    if trusted {
+                        Task { await commitAfterTrust(pinnedFingerprint: fp) }
+                    } else {
+                        errorMessage = "Certificate not trusted. The previous pin is unchanged."
+                    }
+                }
+            }
+        }
         .confirmationDialog(
             "Delete \(site.name)?",
             isPresented: $showDeleteConfirm,
@@ -116,6 +136,18 @@ struct SiteFormView: View {
         URL(string: urlString) != nil
     }
 
+    /// True when TLS pinning needs a refresh: the user either turned
+    /// self-signed on (so there's no OS-validated chain), or changed the URL
+    /// while still self-signed (so the old pin is for a different host and
+    /// likely-different cert). Re-using the stored fingerprint in those
+    /// cases would either accept a wrong cert or fail every request.
+    private var retrustRequired: Bool {
+        guard allowSelfSigned else { return false }
+        if allowSelfSigned != site.allowSelfSigned { return true }
+        let trimmed = urlString.trimmingCharacters(in: .whitespaces)
+        return trimmed != site.baseURL.absoluteString
+    }
+
     private func save() async {
         errorMessage = nil
         isSaving = true
@@ -126,18 +158,81 @@ struct SiteFormView: View {
             return
         }
 
+        if retrustRequired {
+            await runTOFU(url: url)
+            return
+        }
+
+        // No TLS change — reuse the existing fingerprint (or nil, if
+        // self-signed was just turned off, in which case we drop the pin so
+        // OS trust takes over cleanly).
+        let pin = allowSelfSigned ? site.pinnedCertFingerprint : nil
+        commit(url: url, pinnedFingerprint: pin)
+    }
+
+    /// Self-signed TOFU handshake for the edit flow. Opens an unpinned
+    /// `APIClient`, lets the TLS delegate capture the presented cert's
+    /// fingerprint, then hands it to `CertTrustSheet` for the user to
+    /// confirm. The new pin is only written to Keychain inside
+    /// `commitAfterTrust(pinnedFingerprint:)` after explicit approval.
+    private func runTOFU(url: URL) async {
+        let draft = Site(
+            id: site.id,
+            name: resolvedName,
+            baseURL: url,
+            allowSelfSigned: true,
+            pinnedCertFingerprint: nil,
+            sortOrder: site.sortOrder
+        )
+        let client = APIClient(site: draft)
+        var captured: String?
+        client.onUntrustedCertificate = { fp in captured = fp }
+        do {
+            _ = try await client.health()
+        } catch {
+            errorMessage = "Could not connect: \(ErrorMessage.userFacing(error))"
+            return
+        }
+        if let fp = captured {
+            pendingFingerprint = fp
+            showCertTrust = true
+        } else {
+            // OS trust passed unexpectedly — no self-signed cert was
+            // presented. Drop the pin and save as a plain HTTPS site.
+            commit(url: url, pinnedFingerprint: nil)
+        }
+    }
+
+    private func commitAfterTrust(pinnedFingerprint: String) async {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
+        commit(url: url, pinnedFingerprint: pinnedFingerprint)
+    }
+
+    private func commit(url: URL, pinnedFingerprint: String?) {
         let updated = Site(
             id: site.id,
             name: resolvedName,
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
-            pinnedCertFingerprint: site.pinnedCertFingerprint,
+            pinnedCertFingerprint: pinnedFingerprint,
             sortOrder: site.sortOrder
         )
 
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
-        if !trimmedKey.isEmpty {
-            KeychainStore.shared.saveAPIKey(trimmedKey, for: site.id)
+        do {
+            if !trimmedKey.isEmpty {
+                try KeychainStore.shared.saveAPIKey(trimmedKey, for: site.id)
+            }
+            if let fp = pinnedFingerprint {
+                try KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
+            } else if !allowSelfSigned {
+                // Dropping self-signed — clear any stale pin so the site
+                // doesn't carry an unused fingerprint around.
+                KeychainStore.shared.deleteCertFingerprint(for: site.id)
+            }
+        } catch {
+            errorMessage = "Couldn't save credentials: \(error.localizedDescription)"
+            return
         }
 
         appState.updateSite(updated)

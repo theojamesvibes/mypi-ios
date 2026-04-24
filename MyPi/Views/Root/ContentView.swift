@@ -53,57 +53,111 @@ private struct EmptyStateView: View {
     }
 }
 
-private struct MainTabView: View {
-    @Environment(AppState.self) private var appState
-    @Environment(\.horizontalSizeClass) private var hSize
-    @State private var selectedTab: TabID = .dashboard
+private enum MainTab: Int, Hashable, CaseIterable {
+    case dashboard, queryLog, settings
 
-    private enum TabID: Int, Hashable, CaseIterable {
-        case dashboard, queryLog, settings
+    var label: String {
+        switch self {
+        case .dashboard: return "Dashboard"
+        case .queryLog:  return "Query Log"
+        case .settings:  return "Settings"
+        }
     }
 
+    var icon: String {
+        switch self {
+        case .dashboard: return "chart.bar.fill"
+        case .queryLog:  return "list.bullet"
+        case .settings:  return "gearshape.fill"
+        }
+    }
+}
+
+/// Paging + custom bottom bar. `TabView` with `.page` style is backed by
+/// `UIPageViewController`, so horizontal swipes produce a real interactive
+/// slide (half-swipe peek, spring snap) instead of the instant cross-fade
+/// the stock `.automatic` style emits when `selection` changes. The custom
+/// bar replaces the chrome that `.page` style strips.
+///
+/// Works identically on iPhone and iPad — previously iPad used
+/// `.sidebarAdaptable` and swipes were gated out because the sidebar owned
+/// horizontal drags; switching to `.page` gives iPad the same swipe behavior
+/// without that conflict.
+private struct MainTabView: View {
+    @Environment(AppState.self) private var appState
+    @State private var selected: MainTab = .dashboard
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab("Dashboard", systemImage: "chart.bar.fill", value: TabID.dashboard) {
-                if let vm = appState.dashboardVM {
-                    // .id(site) forces SwiftUI to rebuild the view when the
-                    // active site changes, firing the old vm's .onDisappear
-                    // (stopping its poll) and the new vm's .onAppear so the
-                    // two site states don't interleave.
-                    DashboardView(vm: vm)
-                        .id(vm.site.id)
+        TabView(selection: $selected) {
+            dashboard
+                .tag(MainTab.dashboard)
+            queryLog
+                .tag(MainTab.queryLog)
+            AppSettingsView()
+                .tag(MainTab.settings)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .ignoresSafeArea(.keyboard)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            BottomTabBar(selected: $selected)
+        }
+    }
+
+    @ViewBuilder
+    private var dashboard: some View {
+        if let vm = appState.dashboardVM {
+            // .id(site) forces SwiftUI to rebuild the view when the active
+            // site changes, firing the old vm's .onDisappear (stopping its
+            // poll) and the new vm's .onAppear so the two site states don't
+            // interleave.
+            DashboardView(vm: vm).id(vm.site.id)
+        }
+    }
+
+    @ViewBuilder
+    private var queryLog: some View {
+        if let vm = appState.queryLogVM {
+            QueryLogView(vm: vm).id(vm.site.id)
+        }
+    }
+}
+
+private struct BottomTabBar: View {
+    @Binding var selected: MainTab
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(MainTab.allCases, id: \.self) { tab in
+                Button {
+                    // Taps animate the same way swipes do so the transition
+                    // feels consistent regardless of how the user switched.
+                    withAnimation(.easeInOut(duration: 0.28)) {
+                        selected = tab
+                    }
+                } label: {
+                    tabLabel(for: tab)
                 }
-            }
-            Tab("Query Log", systemImage: "list.bullet", value: TabID.queryLog) {
-                if let vm = appState.queryLogVM {
-                    QueryLogView(vm: vm)
-                        .id(vm.site.id)
-                }
-            }
-            Tab("Settings", systemImage: "gear", value: TabID.settings) {
-                AppSettingsView()
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected == tab ? .isSelected : [])
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
-        // Horizontal swipe switches tabs. Skipped on iPad where the
-        // sidebar owns horizontal drags and mis-fires would be disruptive.
-        // simultaneousGesture so List/ScrollView verticals still work; the
-        // |dx| > |dy| check filters vertical scrolls out.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 40)
-                .onEnded { value in
-                    guard hSize == .compact else { return }
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) * 1.5 else { return }
-                    let all = TabID.allCases
-                    guard let idx = all.firstIndex(of: selectedTab) else { return }
-                    if dx < 0, idx < all.count - 1 {
-                        selectedTab = all[idx + 1]
-                    } else if dx > 0, idx > 0 {
-                        selectedTab = all[idx - 1]
-                    }
-                }
-        )
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func tabLabel(for tab: MainTab) -> some View {
+        let active = selected == tab
+        return VStack(spacing: 2) {
+            Image(systemName: tab.icon)
+                .font(.system(size: 22, weight: active ? .semibold : .regular))
+            Text(tab.label)
+                .font(.caption2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .foregroundStyle(active ? Color.accentColor : .secondary)
+        .contentShape(Rectangle())
     }
 }
