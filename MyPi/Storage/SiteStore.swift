@@ -63,15 +63,13 @@ final class SiteStore {
         if let idx = sites.firstIndex(where: { $0.id == site.id }) {
             sites[idx] = site
         } else {
+            // Mutate rather than re-construct — re-constructing via
+            // `Site.init(id:name:baseURL:...)` silently drops any field
+            // not in the argument list, which is how `isDemo` got lost in
+            // 0.1.6. Mutation is future-proof: new fields just travel with
+            // the existing struct.
             var mutable = site
-            mutable = Site(
-                id: site.id,
-                name: site.name,
-                baseURL: site.baseURL,
-                allowSelfSigned: site.allowSelfSigned,
-                pinnedCertFingerprint: site.pinnedCertFingerprint,
-                sortOrder: sites.count
-            )
+            mutable.sortOrder = sites.count
             sites.append(mutable)
         }
         try? JSONEncoder().encode(sites).write(to: fileURL, options: .atomic)
@@ -80,12 +78,12 @@ final class SiteStore {
     func delete(id: UUID) {
         var sites = loadQuiet()
         sites.removeAll { $0.id == id }
-        // Re-number sort order.
-        let renumbered = sites.enumerated().map { idx, s in
-            Site(id: s.id, name: s.name, baseURL: s.baseURL,
-                 allowSelfSigned: s.allowSelfSigned,
-                 pinnedCertFingerprint: s.pinnedCertFingerprint,
-                 sortOrder: idx)
+        // Re-number sort order — same mutation-not-reconstruction rule as
+        // save() so we don't lose fields on the renumber pass.
+        let renumbered: [Site] = sites.enumerated().map { idx, s in
+            var updated = s
+            updated.sortOrder = idx
+            return updated
         }
         try? JSONEncoder().encode(renumbered).write(to: fileURL, options: .atomic)
         KeychainStore.shared.deleteAPIKey(for: id)
