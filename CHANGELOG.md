@@ -4,6 +4,14 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.5] — 2026-04-24
+
+### Fixed
+
+- **Settings tab transition is finally consistent** with Dashboard ↔ Query Log. The 0.1.3 attempt (switching to `TabView(.page)`) slid smoothly for ScrollView/List-backed tabs but snapped instantly into the Form-backed Settings tab — SwiftUI's `TabView(.page)` animation dispatch interacts inconsistently with `Form` children regardless of how the selection mutation is wrapped (verified after 0.1.4's tap-animation + probe-gating fixes didn't land). 0.1.5 replaces SwiftUI's page-style `TabView` with a `UIPageViewController`-backed `PagingTabContainer` (`UIViewControllerRepresentable`). Every tab gets the same native spring slide on both swipe and tap because `setViewControllers(_:direction:animated:true)` is now the only code path that moves between tabs. The wrapper caches `UIHostingController`s by index (so UIPageViewController's `viewControllerBefore/After` callbacks return stable neighbours) and pushes fresh SwiftUI state into each cached host on every parent re-evaluation so site switches propagate without leaking stale VMs into the paged children.
+
+---
+
 ## [0.1.4] — 2026-04-24
 
 ### Added

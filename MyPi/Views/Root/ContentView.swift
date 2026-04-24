@@ -103,51 +103,56 @@ private enum MainTab: Int, Hashable, CaseIterable {
     }
 }
 
-/// Paging + custom bottom bar. `TabView` with `.page` style is backed by
-/// `UIPageViewController`, so horizontal swipes produce a real interactive
-/// slide (half-swipe peek, spring snap) instead of the instant cross-fade
-/// the stock `.automatic` style emits when `selection` changes. The custom
-/// bar replaces the chrome that `.page` style strips.
+/// Paging content + custom bottom bar. Content lives inside a
+/// `PagingTabContainer` (UIPageViewController under the hood) rather than
+/// SwiftUI's `TabView(.page)` because that style's animation was
+/// inconsistent across child view types — Form-backed tabs (Settings)
+/// snapped instantly while ScrollView/List-backed tabs (Dashboard, Query
+/// Log) slid smoothly. Routing through UIKit gives every transition the
+/// same native spring slide regardless of child content.
 ///
 /// Works identically on iPhone and iPad — previously iPad used
 /// `.sidebarAdaptable` and swipes were gated out because the sidebar owned
-/// horizontal drags; switching to `.page` gives iPad the same swipe behavior
-/// without that conflict.
+/// horizontal drags; the unified bottom bar + UIPageViewController gives
+/// iPad the same swipe behavior as iPhone with no sidebar to fight.
 private struct MainTabView: View {
     @Environment(AppState.self) private var appState
     @State private var selected: MainTab = .dashboard
 
     var body: some View {
-        TabView(selection: $selected) {
-            dashboard
-                .tag(MainTab.dashboard)
-            queryLog
-                .tag(MainTab.queryLog)
-            AppSettingsView()
-                .tag(MainTab.settings)
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        PagingTabContainer(
+            selectedIndex: Binding(
+                get: { selected.rawValue },
+                set: { selected = MainTab(rawValue: $0) ?? .dashboard }
+            ),
+            pageCount: MainTab.allCases.count,
+            pageContent: page(for:)
+        )
         .ignoresSafeArea(.keyboard)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             BottomTabBar(selected: $selected)
         }
     }
 
-    @ViewBuilder
-    private var dashboard: some View {
-        if let vm = appState.dashboardVM {
-            // .id(site) forces SwiftUI to rebuild the view when the active
-            // site changes, firing the old vm's .onDisappear (stopping its
-            // poll) and the new vm's .onAppear so the two site states don't
-            // interleave.
-            DashboardView(vm: vm).id(vm.site.id)
-        }
-    }
-
-    @ViewBuilder
-    private var queryLog: some View {
-        if let vm = appState.queryLogVM {
-            QueryLogView(vm: vm).id(vm.site.id)
+    private func page(for index: Int) -> AnyView {
+        guard let tab = MainTab(rawValue: index) else { return AnyView(EmptyView()) }
+        switch tab {
+        case .dashboard:
+            if let vm = appState.dashboardVM {
+                // .id(site) forces SwiftUI to rebuild the view when the
+                // active site changes, firing the old vm's .onDisappear
+                // (stopping its poll) and the new vm's .onAppear so the
+                // two site states don't interleave.
+                return AnyView(DashboardView(vm: vm).id(vm.site.id))
+            }
+            return AnyView(EmptyView())
+        case .queryLog:
+            if let vm = appState.queryLogVM {
+                return AnyView(QueryLogView(vm: vm).id(vm.site.id))
+            }
+            return AnyView(EmptyView())
+        case .settings:
+            return AnyView(AppSettingsView())
         }
     }
 }
