@@ -4,6 +4,23 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.4] — 2026-04-24
+
+### Added
+
+- **`PrivacyInfo.xcprivacy`** privacy manifest at the app bundle root. Declares `NSPrivacyTracking = false`, an empty `NSPrivacyTrackingDomains`, and an empty `NSPrivacyCollectedDataTypes` (nothing leaves the device). Also declares the required-reason usage of `UserDefaults` (category `NSPrivacyAccessedAPICategoryUserDefaults`, reason **CA92.1** — "access user defaults to read or write information that is only accessible to the app itself") which covers the `KeychainStore` UserDefaults fallback. Sets the submission up to pass Apple's automated manifest check.
+- **`SitesLoadErrorView`** — dedicated recovery screen shown when `SiteStore.load()` throws at launch. Previously a corrupted `sites.json` silently returned `[]` and dropped the user into the onboarding flow, which felt like their sites had vanished and invited them to overwrite the salvageable file. The screen explains what happened and tells them the recovery path (delete + reinstall) without offering a destructive one-tap "reset" that could eat recoverable data.
+
+### Changed
+
+- **`SiteStore.load()` now throws** on decode failure. Missing file is still the fresh-install happy path (returns `[]` cleanly). Callers that write to the file (`save` / `delete`) use a private `loadQuiet()` that falls back to `[]` on error — rewriting from scratch is still worse than propagating a mid-flow error, so the recovery is "start from empty" only in the mutation path; the read path in `AppState.init` is the one that surfaces the error to the user via `loadError`.
+
+### Fixed
+
+- **Settings tab transition no longer flashes abruptly.** Two causes: (1) the `withAnimation(.easeInOut(duration: 0.28))` wrapper on bottom-tab taps was forcing SwiftUI to cross-fade Settings (whose `Form` root doesn't slide as cleanly as the ScrollView roots under Dashboard / Query Log), fighting `TabView(.page)`'s native spring; (2) `AppSettingsView`'s `.task { probe(site:) }` fired on every tab re-appear, flipping `connectionStates[site]` to `.probing` and then back to `.connected` mid-transition, which re-rendered the Form while it was still sliding in. The tap handler now mutates `selected` directly and lets the `.page` style's spring drive the slide; Settings now tracks `lastProbedSiteID` so the on-appear probe only runs once per active-site change, with pull-to-refresh still available for an explicit fresh probe.
+
+---
+
 ## [0.1.3] — 2026-04-24
 
 ### Changed

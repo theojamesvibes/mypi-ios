@@ -42,14 +42,28 @@ final class AppState {
     /// Observed connection state per site (used by Settings and the Sites list).
     var connectionStates: [UUID: SiteConnectionState] = [:]
 
+    /// Non-nil when `SiteStore.load()` threw on launch because `sites.json`
+    /// was on disk but couldn't be decoded. We park here so ContentView can
+    /// render a recoverable error screen instead of silently dropping the
+    /// user into onboarding — which would feel like "all my sites vanished"
+    /// and, worse, invite them to overwrite the salvageable file by adding
+    /// a new site.
+    private(set) var loadError: String?
+
     // MARK: - Init
 
     init() {
-        sites = SiteStore.shared.load()
-        if sites.isEmpty {
-            showSetupSheet = true
-        } else {
-            activeSiteIndex = 0
+        do {
+            sites = try SiteStore.shared.load()
+            if sites.isEmpty {
+                showSetupSheet = true
+            } else {
+                activeSiteIndex = 0
+            }
+        } catch {
+            // Don't touch `sites.json` — leave it intact for manual recovery.
+            // Leave `showSetupSheet` false so the error screen has the UI.
+            loadError = error.localizedDescription
         }
     }
 
@@ -57,7 +71,7 @@ final class AppState {
 
     func addSite(_ site: Site) {
         SiteStore.shared.save(site)
-        sites = SiteStore.shared.load()
+        sites = (try? SiteStore.shared.load()) ?? []
         if activeSiteIndex == nil {
             activeSiteIndex = 0
         }
@@ -65,7 +79,7 @@ final class AppState {
 
     func updateSite(_ site: Site) {
         SiteStore.shared.save(site)
-        sites = SiteStore.shared.load()
+        sites = (try? SiteStore.shared.load()) ?? []
         // Invalidate client + VMs so they pick up new settings.
         clientsByID[site.id] = nil
         dashboardVMsByID[site.id]?.stop()
@@ -85,7 +99,7 @@ final class AppState {
             queryLogVMsByID[site.id] = nil
             connectionStates[site.id] = nil
         }
-        sites = SiteStore.shared.load()
+        sites = (try? SiteStore.shared.load()) ?? []
         if sites.isEmpty {
             activeSiteIndex = nil
             showSetupSheet = true
