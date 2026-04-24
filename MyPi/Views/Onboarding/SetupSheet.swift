@@ -30,13 +30,17 @@ struct SetupSheet: View {
                     }
                 }
 
-                Section("Authentication") {
+                Section {
                     LabeledContent("API Key") {
                         SecureField("Paste your API key", text: $apiKey)
                             .multilineTextAlignment(.trailing)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     }
+                } header: {
+                    Text("Authentication")
+                } footer: {
+                    Text("If your MyPi server supports read-only API keys, use one here — the app only ever reads data, so a read-only key is sufficient and limits exposure if the key is ever disclosed.")
                 }
 
                 Section {

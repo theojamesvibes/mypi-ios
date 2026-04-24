@@ -77,6 +77,17 @@ MyPi/
     Common/          — Shared error and loading views
 ```
 
+## Security
+
+- **Secrets in the iOS Keychain only.** Per-site API keys and pinned TLS certificate fingerprints are stored with `kSecAttrAccessibleWhenUnlocked` and scoped to this bundle (no sharing groups). Never written to `sites.json`, never logged. On unsigned simulator builds a UserDefaults fallback is used because the simulator Keychain rejects writes without an entitlement; signed device builds always use the Keychain proper.
+- **TLS defaults to full OS trust.** App Transport Security is strict (`NSAllowsArbitraryLoads = false`). Plain HTTP is rejected by iOS itself, not just by the app.
+- **Self-signed servers are opt-in per site, with TOFU cert pinning.** When "Allow self-signed" is on, the app pins the first leaf certificate it sees (SHA-256 fingerprint stored in Keychain) and rejects every subsequent certificate whose fingerprint doesn't match. There's no UI bypass once a cert is pinned. Legitimate rotation is handled by the **Re-pin Certificate** button in Settings, which reruns the TOFU handshake explicitly.
+- **API key in the `X-API-Key` header only.** No cookies, no bearer tokens, no URL query-string auth.
+- **Site deletion is clean.** Removing a site wipes its Keychain entries (API key + pinned fingerprint) and every per-site disk-cache file via prefix match.
+- **No third-party SDKs.** No analytics, no telemetry, no crash reporter, no advertising identifier access.
+
+**External audit.** v0.1.6 was reviewed externally by Grok on 2026-04-24 — no critical or high-severity findings. Full audit and per-recommendation disposition: [`docs/reviews/2026-04-24-grok-audit.md`](docs/reviews/2026-04-24-grok-audit.md).
+
 ## Privacy
 
 What MyPi stores on the device:
@@ -89,7 +100,7 @@ What MyPi does **not** do: no analytics, no telemetry, no third-party SDKs, no c
 
 ## Version
 
-Current release: **0.1.8**
+Current release: **0.1.9**
 
 ## Privacy Policy
 
