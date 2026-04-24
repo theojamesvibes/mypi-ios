@@ -4,6 +4,29 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.6] — 2026-04-24
+
+App Store submission prep. Everything that can land pre-approval so the
+repo is shovel-ready once the Developer Program activates.
+
+### Added
+
+- **Splash screen** on initial launch — `SplashView` shows the app logo plus "MyPi Companion v{version}" centered, held for 2 seconds over a matched background color, then fades to the main UI. `@State` in `ContentView` means once-per-launch: backgrounding and returning keeps it dismissed.
+- **Branded launch screen.** `UILaunchScreen` now references a new `LaunchBackground` color asset (white light / black dark) instead of emitting a default gray flash. Same canvas as `SplashView`, so the OS → SwiftUI handoff is seamless.
+- **`AppLogo` image asset** (reuses the 1024×1024 app icon) for use in `SplashView` and anywhere else the logo needs to appear in-app.
+- **Demo mode on new install.** SetupSheet gets a "Try Demo Mode" button that creates a synthetic site with the RFC 2606 invalid URL `https://demo.mypi.invalid` and `isDemo = true`. The new `DemoData` module provides Pi-hole-shaped fixtures for every endpoint (summary / history / top / queries / clients / sync / health), scaled roughly by `TimeRange` so the chart still looks alive when users switch ranges. `APIClient` short-circuits to `DemoData` when `site.isDemo`; no network, no Keychain, no API key. Primary use cases: App Store reviewers who don't have a MyPi server, and users exploring the app before committing to a real setup.
+- **Privacy policy** at [`docs/privacy.md`](docs/privacy.md). Formatted for GitHub Pages deployment from the `/docs` folder, hosted at `https://theojamesvibes.github.io/mypi-ios/privacy` once Pages is enabled.
+- **Archive workflow** at `.github/workflows/archive.yml`. Manually dispatched, imports a distribution cert + provisioning profile from secrets, builds the Release archive, exports an IPA with `method = app-store-connect`, and uploads via `xcrun altool` with an App Store Connect API key. All secret names are documented at the top of the file; the workflow doesn't actually run until they're populated post-approval.
+- **`Site.isDemo: Bool`** field with a backward-compatible `init(from decoder:)` that decodes `isDemo` if present and defaults to `false` otherwise — existing `sites.json` from 0.1.5 and earlier keeps decoding cleanly without a one-shot migration.
+
+### Changed
+
+- **`ITSAppUsesNonExemptEncryption = false`** in `Info.plist` (via `project.yml` `info.properties`). The app only uses HTTPS through `URLSession` (standard TLS, no custom cryptography), which qualifies as exempt. Declaring this up-front skips the App Store Connect export-compliance questionnaire on every upload.
+- **Network / Keychain guards skipped for demo sites.** `AppState.probe(site:)` and `DashboardViewModel.fetchAll` both pass straight through the connectivity check when `site.isDemo`, otherwise a device going offline would park the demo site in `.offline` even though its "server" is always local.
+- **Splash z-indexed over the root** via `ZStack` — the sites-empty onboarding sheet is still auto-presented underneath, so when splash fades the user lands on the setup sheet with `Try Demo Mode` visible immediately.
+
+---
+
 ## [0.1.5] — 2026-04-24
 
 ### Fixed

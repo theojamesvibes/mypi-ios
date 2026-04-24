@@ -159,7 +159,10 @@ final class DashboardViewModel {
     /// so scenePhase + poll + onAppear can't triple-trigger within
     /// `minFetchInterval` seconds.
     private func fetchAll(force: Bool = false) async {
-        guard monitor.isConnected else { return }
+        // Demo sites are always "reachable" because they're served from the
+        // bundled DemoData fixtures — skip the connectivity guard so the
+        // dashboard populates even on a simulator with Network off.
+        guard client.site.isDemo || monitor.isConnected else { return }
         if !force, let last = lastUpdated,
            Date().timeIntervalSince(last) < minFetchInterval {
             return

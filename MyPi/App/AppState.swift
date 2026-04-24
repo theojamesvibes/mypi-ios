@@ -125,7 +125,10 @@ final class AppState {
     /// offline / TLS / unauthorized / connected.
     @MainActor
     func probe(site: Site) async {
-        guard NetworkMonitor.shared.isConnected else {
+        // Demo sites never hit the network, so skip the connectivity guard —
+        // otherwise a device going offline would park a demo site in
+        // `.offline` permanently even though its "server" is always local.
+        guard site.isDemo || NetworkMonitor.shared.isConnected else {
             connectionStates[site.id] = .offline
             return
         }

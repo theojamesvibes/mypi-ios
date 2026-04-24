@@ -89,4 +89,8 @@ What MyPi does **not** do: no analytics, no telemetry, no third-party SDKs, no c
 
 ## Version
 
-Current release: **0.1.5**
+Current release: **0.1.6**
+
+## Privacy Policy
+
+Live at <https://theojamesvibes.github.io/mypi-ios/privacy> once GitHub Pages is enabled on the `/docs` folder (Settings → Pages → deploy from branch `main`, folder `/docs`). Source in [`docs/privacy.md`](docs/privacy.md).
