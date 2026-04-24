@@ -231,6 +231,13 @@ struct SetupSheet: View {
             isDemo: true
         )
         appState.addSite(demo)
+        // Activate the demo site explicitly. `addSite` only auto-selects
+        // when no site was active before, so on a device that already has
+        // real sites configured the demo would otherwise land silently at
+        // the end of the list — opposite of what the user asked for.
+        if let idx = appState.sites.firstIndex(where: { $0.id == demo.id }) {
+            appState.activeSiteIndex = idx
+        }
         dismiss()
     }
 }

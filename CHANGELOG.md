@@ -4,6 +4,19 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.8] — 2026-04-24
+
+### Added
+
+- **`DemoModeBanner`** — visible indicator shown above every tab's content when the active site is a demo site. Reads "Demo Mode · Showing sample data · Close the app to exit." Wired into Dashboard (phone + iPad layouts), Query Log, and a top-of-form section in Settings. Keeps demo state unambiguous and documents the exit path.
+- **Demo mode is session-scoped** — `AppState.init` now sweeps every `isDemo` site on cold launch (via `SiteStore.delete`, which already handles the Keychain + disk-cache cleanup from 0.1.3). Force-quitting the app from the app switcher is the "exit demo mode" affordance — on next launch the demo site is gone and, if it was the only site, the SetupSheet reappears with **Try Demo Mode** ready to go again. Backgrounding and returning does *not* reset — `AppState` stays alive in that case, so a background → foreground cycle keeps you in demo mode as expected.
+
+### Changed
+
+- **`Try Demo Mode` activates the new site.** `AppState.addSite` only auto-selects when no site was previously active; `SetupSheet.addDemoSite` now also sets `activeSiteIndex` to the demo site so a device with existing real sites lands directly on the demo rather than having it appear silently at the end of the site list.
+
+---
+
 ## [0.1.7] — 2026-04-24
 
 ### Fixed

@@ -43,8 +43,12 @@ struct QueryLogView: View {
     @ViewBuilder
     private var header: some View {
         VStack(spacing: 8) {
+            if vm.site.isDemo {
+                DemoModeBanner()
+                    .padding(.top, 4)
+            }
             LastUpdatedLabel(lastUpdated: vm.lastUpdated)
-                .padding(.top, 4)
+                .padding(.top, vm.site.isDemo ? 0 : 4)
             // Same confidence gate as Dashboard — only show the banner once
             // the active-site Dashboard VM has confirmed ≥ 2 consecutive
             // failures. The QueryLog VM itself doesn't poll, so we lean on

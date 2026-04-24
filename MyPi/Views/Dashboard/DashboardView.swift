@@ -19,8 +19,13 @@ struct DashboardView: View {
     private var phoneBody: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
+                if vm.site.isDemo {
+                    DemoModeBanner()
+                        .padding(.top, 4)
+                }
+
                 LastUpdatedLabel(lastUpdated: vm.lastUpdated)
-                    .padding(.top, 4)
+                    .padding(.top, vm.site.isDemo ? 0 : 4)
 
                 // Gate on vm.isSiteUnreachable so the banner only appears
                 // once the VM has confirmed ≥ 2 consecutive fetch failures.

@@ -11,6 +11,14 @@ struct AppSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let site = appState.activeSite, site.isDemo {
+                    Section {
+                        DemoModeBanner()
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section("Connection") {
                     if let site = appState.activeSite {
                         LabeledContent("Site URL") {

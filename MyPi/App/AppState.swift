@@ -54,7 +54,17 @@ final class AppState {
 
     init() {
         do {
-            sites = try SiteStore.shared.load()
+            let loaded = try SiteStore.shared.load()
+            // Demo sites are session-scoped: wipe on every cold launch so
+            // "close the app to exit demo mode" is the user's way out. We
+            // only reach this branch when the app process is fresh — if
+            // the user just backgrounds and returns, `AppState` is already
+            // alive and `init` doesn't run again, so demo mode persists
+            // across background/foreground cycles as expected.
+            for demo in loaded where demo.isDemo {
+                SiteStore.shared.delete(id: demo.id)
+            }
+            sites = loaded.filter { !$0.isDemo }
             if sites.isEmpty {
                 showSetupSheet = true
             } else {

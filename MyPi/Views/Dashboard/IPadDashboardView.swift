@@ -10,8 +10,13 @@ struct IPadDashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if vm.site.isDemo {
+                    DemoModeBanner()
+                        .padding(.top, 4)
+                }
+
                 LastUpdatedLabel(lastUpdated: vm.lastUpdated)
-                    .padding(.top, 4)
+                    .padding(.top, vm.site.isDemo ? 0 : 4)
 
                 if vm.isSiteUnreachable {
                     let state = appState.connectionStates[vm.site.id] ?? .unknown
