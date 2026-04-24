@@ -4,19 +4,39 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
 
+    /// First-launch splash: `@State` in the root view persists for the
+    /// lifetime of the SwiftUI process, so this is naturally "once per
+    /// launch" — backgrounding and returning keeps it dismissed. Flipped
+    /// to false after a 2-second hold plus the fade animation.
+    @State private var showSplash = true
+
     var body: some View {
         @Bindable var state = appState
-        Group {
-            if let err = appState.loadError {
-                SitesLoadErrorView(message: err)
-            } else if appState.sites.isEmpty {
-                EmptyStateView()
-            } else {
-                MainTabView()
+        ZStack {
+            Group {
+                if let err = appState.loadError {
+                    SitesLoadErrorView(message: err)
+                } else if appState.sites.isEmpty {
+                    EmptyStateView()
+                } else {
+                    MainTabView()
+                }
             }
-        }
-        .sheet(isPresented: $state.showSetupSheet) {
-            SetupSheet()
+            .sheet(isPresented: $state.showSetupSheet) {
+                SetupSheet()
+            }
+
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .zIndex(1)
+                    .task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            showSplash = false
+                        }
+                    }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             // Refresh whenever the app comes back to the foreground. Replaces

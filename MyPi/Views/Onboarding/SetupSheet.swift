@@ -52,6 +52,29 @@ struct SetupSheet: View {
                             .font(.footnote)
                     }
                 }
+
+                // Demo mode: creates a bundled-fixtures site so reviewers
+                // and curious users can explore the UI without configuring
+                // a real MyPi server. No network, no API key, no Keychain
+                // writes — just a synthetic Pi-hole-shaped dataset.
+                Section {
+                    Button {
+                        addDemoSite()
+                    } label: {
+                        HStack {
+                            Image(systemName: "play.rectangle.fill")
+                                .foregroundStyle(Color.accentColor)
+                            Text("Try Demo Mode")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                } footer: {
+                    Text("Adds a sample site with synthetic data. Useful if you don't have a MyPi server yet.")
+                }
             }
             .navigationTitle("Add Site")
             .navigationBarTitleDisplayMode(.inline)
@@ -192,6 +215,22 @@ struct SetupSheet: View {
             return
         }
         appState.addSite(site)
+        dismiss()
+    }
+
+    /// Create and commit a demo site. Uses the RFC 2606 invalid `.invalid`
+    /// TLD for the baseURL so nothing ever resolves even if a future code
+    /// path accidentally bypasses the `site.isDemo` check in `APIClient`.
+    /// No Keychain write — demo sites don't use API keys.
+    private func addDemoSite() {
+        guard let url = URL(string: "https://demo.mypi.invalid") else { return }
+        let demo = Site(
+            name: "Demo",
+            baseURL: url,
+            allowSelfSigned: false,
+            isDemo: true
+        )
+        appState.addSite(demo)
         dismiss()
     }
 }

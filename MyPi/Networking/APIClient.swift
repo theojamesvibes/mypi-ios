@@ -98,7 +98,8 @@ final class APIClient {
     // MARK: - Public endpoints
 
     func health() async throws -> HealthResponse {
-        try await get("/api/health", authenticated: false)
+        if site.isDemo { return DemoData.health() }
+        return try await get("/api/health", authenticated: false)
     }
 
     /// Verify a candidate API key against an authenticated endpoint without
@@ -123,18 +124,24 @@ final class APIClient {
     }
 
     func summary(range: TimeRange) async throws -> AggregatedSummary {
-        try await get("/api/stats/summary?\(range.queryString())")
+        if site.isDemo { return DemoData.summary(range: range) }
+        return try await get("/api/stats/summary?\(range.queryString())")
     }
 
     func history(range: TimeRange) async throws -> HistoryResponse {
-        try await get("/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)")
+        if site.isDemo { return DemoData.history(range: range) }
+        return try await get("/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)")
     }
 
     func top(range: TimeRange, limit: Int = 10) async throws -> TopStatsResponse {
-        try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
+        if site.isDemo { return DemoData.top(range: range, limit: limit) }
+        return try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
     }
 
     func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all, domain: String? = nil) async throws -> QueryPage {
+        if site.isDemo {
+            return DemoData.queries(page: page, pageSize: pageSize, range: range, filter: filter, domain: domain)
+        }
         var path = "/api/queries?page=\(page)&page_size=\(pageSize)&\(range.queryString())"
         if let q = filter.queryParam { path += "&\(q)" }
         if let d = domain?.trimmingCharacters(in: .whitespaces), !d.isEmpty,
@@ -146,14 +153,16 @@ final class APIClient {
 
     /// Aggregated per-client stats, grouped server-side. Used by the Unique Clients drill-down.
     func clients(range: TimeRange) async throws -> [ClientSummary] {
-        try await get("/api/queries/clients?\(range.queryString())")
+        if site.isDemo { return DemoData.clients(range: range) }
+        return try await get("/api/queries/clients?\(range.queryString())")
     }
 
     /// Global sync state — the timestamp of the last query-log sync run,
     /// plus per-instance success/failure. The sync schedule runs hourly by
     /// default (separate from the stats poll which is much more frequent).
     func syncStatus() async throws -> SyncStatus {
-        try await get("/api/sync/status")
+        if site.isDemo { return DemoData.syncStatus() }
+        return try await get("/api/sync/status")
     }
 
     // MARK: - Generic request
