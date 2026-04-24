@@ -7,7 +7,9 @@ struct ContentView: View {
     var body: some View {
         @Bindable var state = appState
         Group {
-            if appState.sites.isEmpty {
+            if let err = appState.loadError {
+                SitesLoadErrorView(message: err)
+            } else if appState.sites.isEmpty {
                 EmptyStateView()
             } else {
                 MainTabView()
@@ -50,6 +52,34 @@ private struct EmptyStateView: View {
             .buttonStyle(.borderedProminent)
         }
         .padding()
+    }
+}
+
+/// Shown when `SiteStore.load()` threw on launch — `sites.json` is on disk
+/// but can't be decoded. Intentionally doesn't offer a "reset" button:
+/// if the user could one-tap nuke the file, a momentary decode glitch
+/// would destroy recoverable data. Recovery path is to reinstall (or
+/// delete the file via the Files app if they know what they're doing).
+private struct SitesLoadErrorView: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
+                .foregroundStyle(.orange)
+            Text("Couldn't load your sites")
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text("Delete and reinstall the app to start over. Note: this will remove all site configurations and cached data.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(32)
     }
 }
 
@@ -129,11 +159,15 @@ private struct BottomTabBar: View {
         HStack(spacing: 0) {
             ForEach(MainTab.allCases, id: \.self) { tab in
                 Button {
-                    // Taps animate the same way swipes do so the transition
-                    // feels consistent regardless of how the user switched.
-                    withAnimation(.easeInOut(duration: 0.28)) {
-                        selected = tab
-                    }
+                    // No explicit `withAnimation` here — `TabView(.page)`
+                    // has its own spring that drives both the interactive
+                    // swipe and programmatic selection changes. Wrapping
+                    // the mutation in an `easeInOut` curve earlier forced
+                    // SwiftUI to cross-fade the Form-backed Settings tab
+                    // instead of sliding it, which felt like an abrupt
+                    // flash compared to the ScrollView-backed Dashboard /
+                    // Query Log slides.
+                    selected = tab
                 } label: {
                     tabLabel(for: tab)
                 }

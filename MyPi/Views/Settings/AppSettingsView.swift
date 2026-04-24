@@ -2,6 +2,11 @@ import SwiftUI
 
 struct AppSettingsView: View {
     @Environment(AppState.self) private var appState
+    /// Probe fires once per active-site change rather than on every tab
+    /// re-appear. Re-probing on every swipe-in caused a `.probing` →
+    /// `.connected` state flip mid-transition, which re-rendered the Form
+    /// while the tab was still sliding and looked like an abrupt flash.
+    @State private var lastProbedSiteID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -42,11 +47,14 @@ struct AppSettingsView: View {
                 }
             }
             .task {
-                if let site = appState.activeSite {
-                    await appState.probe(site: site)
-                }
+                guard let site = appState.activeSite,
+                      lastProbedSiteID != site.id else { return }
+                lastProbedSiteID = site.id
+                await appState.probe(site: site)
             }
             .refreshable {
+                // Pull-to-refresh still forces a fresh probe — that's the
+                // explicit-user-wants-fresh-data path.
                 if let site = appState.activeSite {
                     await appState.probe(site: site)
                 }
