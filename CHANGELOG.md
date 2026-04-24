@@ -4,6 +4,15 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.10] — 2026-04-24
+
+### Added
+
+- **Appearance preference (Light / Dark / System).** New `AppColorScheme` enum persisted via `@AppStorage("appColorScheme")`; `ContentView` reads it and applies `.preferredColorScheme(theme.colorScheme)` at the root so splash, sheets, and tab content all follow the choice. `AppSettingsView` gains an **Appearance** section with a Picker. `.system` returns `nil` from `colorScheme`, which means "defer to the OS" — the default behavior — and selecting Light or Dark forces the scheme across the whole hierarchy without individual views needing to know about it.
+- **`docs/appstore-metadata.md`** — draft of every copy-paste field App Store Connect asks for on submission: name, subtitle, description, keywords, promotional text, review notes, App Privacy questionnaire answers, screenshots checklist, and a submission-day runbook. Ready to lift verbatim the moment the Developer Program activates.
+
+---
+
 ## [0.1.9] — 2026-04-24
 
 Response to the external Grok architecture + security audit of 0.1.6 (filed at [`docs/reviews/2026-04-24-grok-audit.md`](docs/reviews/2026-04-24-grok-audit.md) with per-recommendation disposition). No critical findings from that review; this release folds in the small-but-worth-it suggestions.
