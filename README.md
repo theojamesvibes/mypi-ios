@@ -9,7 +9,7 @@ Native iOS/iPadOS companion app for [MyPi](https://github.com/theojamesvibes/myp
 - Query log with filtering (all / permitted / blocked / cached) and an in-app legend for what each status icon means; the search bar filters locally across domain, client IP, client name, status, and instance name
 - Multi-site support — manage multiple MyPi servers (e.g. home + office) with per-site connection indicators (green = reachable and authenticated, red = not). Switching sites is instant — Dashboard and Query Log view models are cached per site so the prior state is still on screen
 - Always-visible "Updated X ago" label at the top of Dashboard and Query Log; a banner appears when the active site is unreachable, showing the retry cadence
-- Swipe left/right on iPhone to move between Dashboard / Query Log / Settings; iPad uses the adaptive sidebar
+- Swipe left/right (iPhone and iPad) to move between Dashboard / Query Log / Settings — interactive page slide with tap-to-switch on the bottom tab bar
 - Secure Keychain storage for API keys and TLS certificate fingerprints
 - Full TLS validation by default; opt-in self-signed support with TOFU cert pinning; Settings shows the negotiated TLS protocol version
 - Connection Status and Server Version surfaced in Settings, with every observable state (Connecting / Connected / Unauthorized / Offline / TLS error / Error)
@@ -77,6 +77,16 @@ MyPi/
     Common/          — Shared error and loading views
 ```
 
+## Privacy
+
+What MyPi stores on the device:
+
+- **Keychain** (`kSecAttrAccessibleWhenUnlocked`, bundle-scoped, no sharing groups): per-site API keys and pinned TLS certificate fingerprints. On unsigned simulator builds a UserDefaults fallback is used because the simulator Keychain rejects writes without an entitlement; real device installs always use the Keychain proper.
+- **`~/Library/Caches/net.myssdomain.mypi/`** (standard iOS file protection): the most recent Dashboard summary / history / top / sync payload and the first page of Query Log results per site. This includes the client IPs and domain names visible to your Pi-hole server. Cache files are cleared when the site is deleted.
+- **`Documents/sites.json`**: site metadata — display name, base URL, self-signed flag, sort order. API keys are never written here.
+
+What MyPi does **not** do: no analytics, no telemetry, no third-party SDKs, no crash reporters. TLS pinning cannot be bypassed from the UI once a cert is pinned, and the API key is only ever transmitted via the `X-API-Key` request header.
+
 ## Version
 
-Current release: **0.1.2**
+Current release: **0.1.3**

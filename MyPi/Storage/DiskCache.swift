@@ -32,6 +32,21 @@ final class DiskCache {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// Delete every file whose sanitized name begins with the given prefix.
+    /// Used by `SiteStore.delete` to sweep all of a site's cache files
+    /// (dashboard-* and querylog-* variants) without having to enumerate
+    /// every filter × range combination at the caller.
+    func deleteAll(withPrefix prefix: String) {
+        let sanitized = sanitize(prefix)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        for url in entries where url.lastPathComponent.hasPrefix(sanitized) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     private func sanitize(_ key: String) -> String {
         key.replacingOccurrences(of: "/", with: "_")
            .replacingOccurrences(of: ":", with: "_")

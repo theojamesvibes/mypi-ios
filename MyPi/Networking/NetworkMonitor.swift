@@ -8,7 +8,11 @@ import Observation
 final class NetworkMonitor {
     static let shared = NetworkMonitor()
 
-    private(set) var isConnected: Bool = true
+    // Default to false so fetches don't slip through the NWPathMonitor guard
+    // during the brief window before its first callback fires. The monitor
+    // flips this to true inside the path-update handler immediately if the
+    // device is actually online.
+    private(set) var isConnected: Bool = false
     private(set) var connectionType: NWInterface.InterfaceType? = nil
 
     private let monitor = NWPathMonitor()

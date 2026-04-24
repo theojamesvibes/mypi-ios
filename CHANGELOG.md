@@ -4,6 +4,23 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.3] — 2026-04-24
+
+### Changed
+
+- **Interactive sliding tab transitions** — Dashboard / Query Log / Settings now page horizontally with a real interactive swipe (half-swipe peek, spring snap) instead of the instant cross-fade the old `.sidebarAdaptable` `TabView` emitted on selection change. Backed by `TabView(.page(indexDisplayMode: .never))` (UIPageViewController under the hood), with a custom `BottomTabBar` replacing the chrome that `.page` style strips. Tap-to-switch animates with the same curve so taps and swipes feel identical.
+- **Swipe enabled on iPad.** The previous iPhone-only swipe existed because `.sidebarAdaptable` put a sidebar on iPad and the sidebar's own horizontal drag conflicted. With `.page` style and the unified bottom bar there's no sidebar to fight, so iPad gets the same swipe behavior as iPhone. The old manual `DragGesture` in `ContentView` is removed — `UIPageViewController` handles paging natively, including interactive drag-from-mid-swipe cancellation.
+- **User-facing error messages sanitized.** A new `ErrorMessage.userFacing(_:)` helper maps `URLError` codes to plain-English strings ("The device is offline", "Couldn't find the server — check the URL", etc.) and passes `APIError.detail` through unchanged. Replaces raw `error.localizedDescription` in the SetupSheet form, SiteFormView edit form, QueryLogViewModel error state, and the Dashboard cold-failure view. Error banners in the `SiteStatusBanner` and Settings Connection panel still use the richer underlying description because that's where diagnostic detail is valuable.
+
+### Fixed
+
+- **Orphaned cache files on site delete.** `SiteStore.delete(id:)` only cleaned up the three legacy `dashboard-*` cache keys. The disk cache expanded in 0.1.2 to include `-sync` and a set of `querylog-*` files per filter × time-range; those leaked after a site was removed. Added `DiskCache.deleteAll(withPrefix:)` that enumerates the cache directory and sweeps every file whose sanitized name starts with the given prefix, and `SiteStore.delete` now calls it for both `dashboard-{id}` and `querylog-{id}`.
+- **Silent Keychain write failures.** `KeychainStore.saveAPIKey` / `saveCertFingerprint` used to ignore any `SecItemAdd` status other than success or `errSecMissingEntitlement`, so transient failures (e.g. first-unlock timing on a real device) could lose the secret without the UI ever knowing. Both now `throw KeychainError.writeFailed(OSStatus)` for unexpected statuses; SetupSheet and SiteFormView surface the error in the form's red banner and refuse to persist the `Site` record if its secrets couldn't be stored — no more un-authenticatable zombie sites.
+- **Self-signed edit path skipped TOFU.** `SiteFormView.save` previously used the stored pin verbatim even after the user changed the URL or flipped "Allow self-signed certificate" back on, which would either accept a cert from the wrong host or cancel every request with a pin mismatch. The form now detects those changes (`retrustRequired`), warns the user inline, and routes Save through a fresh TOFU handshake (`runTOFU` → `CertTrustSheet` → `commitAfterTrust`). Turning self-signed off also clears any stale pin from the Keychain. The SetupSheet path already did this correctly on site creation; this closes the gap on edits.
+- **NetworkMonitor launch-race.** `isConnected` defaulted to `true` before `NWPathMonitor`'s first callback fired, so a fetch that raced the first path update could slip past the offline guard. Now defaults to `false` — the monitor flips it to `true` in its path-update handler as soon as the device is confirmed online.
+
+---
+
 ## [0.1.2] — 2026-04-21
 
 ### Added

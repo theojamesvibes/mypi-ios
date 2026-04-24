@@ -210,7 +210,7 @@ final class DashboardViewModel {
                 }
                 loadState = .loaded
             } else {
-                loadState = .failed(error.localizedDescription)
+                loadState = .failed(ErrorMessage.userFacing(error))
             }
             // Only flip the site's connection state to unreachable after we
             // cross the confidence threshold. Previously a single failure

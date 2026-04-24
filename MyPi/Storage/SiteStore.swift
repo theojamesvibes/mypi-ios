@@ -49,11 +49,11 @@ final class SiteStore {
         try? JSONEncoder().encode(renumbered).write(to: fileURL, options: .atomic)
         KeychainStore.shared.deleteAPIKey(for: id)
         KeychainStore.shared.deleteCertFingerprint(for: id)
-        // Remove the disk-cache files for this site so stale responses don't
-        // linger forever after the site is deleted.
-        let prefix = "dashboard-\(id.uuidString)"
-        DiskCache.shared.delete(key: prefix + "-summary")
-        DiskCache.shared.delete(key: prefix + "-history")
-        DiskCache.shared.delete(key: prefix + "-top")
+        // Sweep every per-site cache file. Prefix-delete covers dashboard
+        // (summary/history/top/sync) and querylog (clients + queries per
+        // filter × range) variants without having to enumerate the cross
+        // product here.
+        DiskCache.shared.deleteAll(withPrefix: "dashboard-\(id.uuidString)")
+        DiskCache.shared.deleteAll(withPrefix: "querylog-\(id.uuidString)")
     }
 }

@@ -1,6 +1,23 @@
 import Foundation
 import Security
 
+/// Thrown by `KeychainStore` when a write fails with any status other than
+/// `errSecSuccess` / `errSecMissingEntitlement`. The entitlement case is the
+/// expected simulator path and falls through to the UserDefaults fallback
+/// without throwing; everything else (transient first-unlock failure on a
+/// real device, duplicate-item conflict, etc.) is surfaced so the caller
+/// can retry or tell the user instead of silently losing the secret.
+enum KeychainError: LocalizedError {
+    case writeFailed(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .writeFailed(let status):
+            return "Keychain write failed (status \(status))."
+        }
+    }
+}
+
 /// Thin wrapper around the iOS Keychain for storing per-site API keys and
 /// certificate fingerprints.
 final class KeychainStore {
@@ -11,8 +28,8 @@ final class KeychainStore {
 
     // MARK: - API Keys
 
-    func saveAPIKey(_ key: String, for siteID: UUID) {
-        save(key, account: "apikey-\(siteID.uuidString)")
+    func saveAPIKey(_ key: String, for siteID: UUID) throws {
+        try save(key, account: "apikey-\(siteID.uuidString)")
     }
 
     func apiKey(for siteID: UUID) -> String? {
@@ -25,8 +42,8 @@ final class KeychainStore {
 
     // MARK: - Cert fingerprints
 
-    func saveCertFingerprint(_ fingerprint: String, for siteID: UUID) {
-        save(fingerprint, account: "cert-\(siteID.uuidString)")
+    func saveCertFingerprint(_ fingerprint: String, for siteID: UUID) throws {
+        try save(fingerprint, account: "cert-\(siteID.uuidString)")
     }
 
     func deleteCertFingerprint(for siteID: UUID) {
@@ -44,7 +61,7 @@ final class KeychainStore {
     /// On real signed builds the Keychain path succeeds and UserDefaults is never touched.
     private static let defaultsPrefix = "net.myssdomain.mypi.fallback."
 
-    private func save(_ value: String, account: String) {
+    private func save(_ value: String, account: String) throws {
         guard let data = value.data(using: .utf8) else { return }
         delete(account: account)
         let query: [String: Any] = [
@@ -55,8 +72,13 @@ final class KeychainStore {
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
-        if status == errSecMissingEntitlement {
+        switch status {
+        case errSecSuccess:
+            return
+        case errSecMissingEntitlement:
             UserDefaults.standard.set(value, forKey: Self.defaultsPrefix + account)
+        default:
+            throw KeychainError.writeFailed(status)
         }
     }
 
