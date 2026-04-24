@@ -8,6 +8,11 @@ struct AppSettingsView: View {
     /// while the tab was still sliding and looked like an abrupt flash.
     @State private var lastProbedSiteID: UUID?
 
+    /// Theme preference. Bound via `@AppStorage` using the same key
+    /// ContentView reads to apply `.preferredColorScheme`, so a change
+    /// here propagates instantly without any additional plumbing.
+    @AppStorage(AppColorScheme.storageKey) private var theme: AppColorScheme = .system
+
     // MARK: - Re-pin state
     //
     // Captures a fresh SHA-256 fingerprint from the live server so the
@@ -61,6 +66,15 @@ struct AppSettingsView: View {
                             .font(.footnote)
                             .foregroundStyle(.red)
                     }
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $theme) {
+                        ForEach(AppColorScheme.allCases) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
 
                 Section("About") {

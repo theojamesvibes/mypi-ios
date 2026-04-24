@@ -9,7 +9,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.1.9"
+    MARKETING_VERSION: "0.1.10"
     CURRENT_PROJECT_VERSION: "1"
     PRODUCT_BUNDLE_IDENTIFIER: net.myssdomain.mypi
     DEVELOPMENT_TEAM: ""

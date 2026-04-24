@@ -10,6 +10,12 @@ struct ContentView: View {
     /// to false after a 2-second hold plus the fade animation.
     @State private var showSplash = true
 
+    /// User-selected appearance. Applied at the root so every descendant
+    /// view — splash, sheets, tabs — picks up the same scheme without
+    /// having to apply it individually. `.system` returns nil from
+    /// `colorScheme` which lets iOS decide, matching default behavior.
+    @AppStorage(AppColorScheme.storageKey) private var theme: AppColorScheme = .system
+
     var body: some View {
         @Bindable var state = appState
         ZStack {
@@ -38,6 +44,7 @@ struct ContentView: View {
                     }
             }
         }
+        .preferredColorScheme(theme.colorScheme)
         .onChange(of: scenePhase) { _, phase in
             // Refresh whenever the app comes back to the foreground. Replaces
             // the old BGAppRefreshTask plumbing — cheaper, more predictable,
