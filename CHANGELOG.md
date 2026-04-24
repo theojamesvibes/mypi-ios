@@ -4,6 +4,15 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.1.7] — 2026-04-24
+
+### Fixed
+
+- **Demo mode actually uses the bundled fixtures now.** `SiteStore.save` reconstructed every incoming `Site` into a new struct to stamp `sortOrder`, but its constructor call didn't pass `isDemo`, so the flag silently reverted to `false` before hitting disk — then `APIClient` saw a "real" site and tried to reach `demo.mypi.invalid` over the network. `SiteStore.delete`'s renumber pass had the same drop-on-the-floor bug, and `SiteFormView.commit` would flip a demo site to "real" on any edit. All three paths now mutate the existing `Site` (setting just the fields that need changing) instead of reconstructing it, which is future-proof against every subsequent new field.
+- **Self-heal for already-borked demo sites on disk.** Anyone who tapped **Try Demo Mode** on 0.1.6 has a persisted site with `isDemo: false` and `baseURL: https://demo.mypi.invalid`. `Site.init(from:)` now flips `isDemo` back to `true` on load for any site whose host matches `demo.mypi.invalid` — the `.invalid` TLD is reserved by RFC 2606 and can never resolve on the real internet, so this is safe to coerce. No manual delete + re-add required; just update and the demo site starts working.
+
+---
+
 ## [0.1.6] — 2026-04-24
 
 App Store submission prep. Everything that can land pre-approval so the

@@ -215,7 +215,10 @@ struct SiteFormView: View {
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: pinnedFingerprint,
-            sortOrder: site.sortOrder
+            sortOrder: site.sortOrder,
+            // Preserve the demo flag on edit so renaming a demo site
+            // doesn't flip it to "real" and start hitting the network.
+            isDemo: site.isDemo
         )
 
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
