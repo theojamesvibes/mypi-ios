@@ -13,6 +13,15 @@ struct SetupSheet: View {
     @State private var pendingFingerprint: String?
     @State private var showCertTrust: Bool = false
 
+    /// Multi-site discovery state. Populated after auth succeeds when the
+    /// server is on MyPi 1.11+ and reports more than one backend site.
+    /// `pendingPin` carries the certificate fingerprint forward in the
+    /// self-signed flow so the per-site choice still ends up trusting
+    /// the right cert when we eventually commit.
+    @State private var discoveredSites: [MyPiSite] = []
+    @State private var showSitePicker: Bool = false
+    @State private var pendingPin: String?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -108,6 +117,14 @@ struct SetupSheet: View {
                 }
             }
         }
+        .sheet(isPresented: $showSitePicker) {
+            MyPiSitePicker(
+                serverName: resolvedName,
+                sites: discoveredSites
+            ) { choice in
+                handlePickerChoice(choice)
+            }
+        }
         .interactiveDismissDisabled(appState.sites.isEmpty)
     }
 
@@ -170,7 +187,7 @@ struct SetupSheet: View {
             return
         }
 
-        commitSite(pinnedFingerprint: nil)
+        await afterAuth(client: client, pinnedFingerprint: nil)
     }
 
     /// After self-signed cert trust, re-open a client with the pinned fingerprint,
@@ -195,31 +212,129 @@ struct SetupSheet: View {
             errorMessage = "Authentication check failed: \(ErrorMessage.userFacing(error))"
             return
         }
-        commitSite(pinnedFingerprint: pinnedFingerprint)
+        await afterAuth(client: pinnedClient, pinnedFingerprint: pinnedFingerprint)
     }
 
-    private func commitSite(pinnedFingerprint: String?) {
+    /// Common post-authentication path. Probes `/api/sites` to see whether
+    /// this server is multi-site (1.11+) and either commits straight away
+    /// for a single-site / legacy server, or hands off to the picker for
+    /// the user to choose how to add a multi-site server.
+    private func afterAuth(client: APIClient, pinnedFingerprint: String?) async {
+        let mypiSites = (try? await client.mypiSites()) ?? []
+        if mypiSites.count >= 2 {
+            // Multi-site server. Stash discovery + cert state and let the
+            // picker drive the rest of the flow on the main thread.
+            discoveredSites = mypiSites
+            pendingPin = pinnedFingerprint
+            showSitePicker = true
+            return
+        }
+        // Single-site / legacy / single-result servers: commit with no
+        // slug. Server-side legacy alias resolves to Main automatically
+        // for true multi-site servers that happen to expose only one site.
+        commitSingleSite(pinnedFingerprint: pinnedFingerprint, mypiSite: nil)
+    }
+
+    private func handlePickerChoice(_ choice: MyPiSitePicker.Choice) {
+        let pin = pendingPin
+        switch choice {
+        case .mainOnly:
+            commitSingleSite(pinnedFingerprint: pin, mypiSite: nil)
+        case .specific(let mypiSite):
+            commitSingleSite(pinnedFingerprint: pin, mypiSite: mypiSite)
+        case .all:
+            commitAllSites(pinnedFingerprint: pin, mypiSites: discoveredSites)
+        }
+    }
+
+    private func commitSingleSite(pinnedFingerprint: String?, mypiSite: MyPiSite?) {
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
         let site = Site(
-            name: resolvedName,
+            name: nameForSite(serverName: resolvedName, mypiSite: mypiSite),
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
-            pinnedCertFingerprint: pinnedFingerprint
+            pinnedCertFingerprint: pinnedFingerprint,
+            mypiSiteSlug: mypiSite?.slug,
+            mypiSiteName: mypiSite?.name
         )
         do {
-            try KeychainStore.shared.saveAPIKey(apiKey.trimmingCharacters(in: .whitespaces), for: site.id)
-            if let fp = pinnedFingerprint {
-                try KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
-            }
+            try persistCredentials(for: site, pinnedFingerprint: pinnedFingerprint)
         } catch {
-            // Don't persist the Site record if its secrets can't be stored —
-            // that leaves the user with an un-authenticatable site and no
-            // clear way to fix it. Surface the Keychain error instead.
             errorMessage = "Couldn't save credentials: \(error.localizedDescription)"
             return
         }
         appState.addSite(site)
         dismiss()
+    }
+
+    /// Adds every backend site as a separate iOS Site. Main becomes the
+    /// active selection; the rest are appended in `sortOrder` and stay
+    /// secondary (matches the user's preference set during multisite
+    /// design discussion). API key + pinned fingerprint are saved into
+    /// Keychain once per iOS Site, since the entries are keyed by `Site.id`.
+    private func commitAllSites(pinnedFingerprint: String?, mypiSites: [MyPiSite]) {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
+        let ordered = mypiSites.sorted { lhs, rhs in
+            // Main first, then sortOrder, then name (stable fallback).
+            if lhs.isMain != rhs.isMain { return lhs.isMain }
+            if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
+        }
+        var addedIDs: [UUID] = []
+        for mypiSite in ordered {
+            let site = Site(
+                name: nameForSite(serverName: resolvedName, mypiSite: mypiSite),
+                baseURL: url,
+                allowSelfSigned: allowSelfSigned,
+                pinnedCertFingerprint: pinnedFingerprint,
+                mypiSiteSlug: mypiSite.slug,
+                mypiSiteName: mypiSite.name
+            )
+            do {
+                try persistCredentials(for: site, pinnedFingerprint: pinnedFingerprint)
+            } catch {
+                errorMessage = "Couldn't save credentials for \(mypiSite.name): \(error.localizedDescription)"
+                return
+            }
+            appState.addSite(site)
+            addedIDs.append(site.id)
+        }
+        // Force Main to be the active selection. `addSite` only auto-selects
+        // when nothing was previously active, so on a device that already
+        // had real sites configured the new entries would otherwise tail
+        // off the end without any of them becoming visible.
+        if let mainID = ordered.first(where: { $0.isMain }).flatMap({ main in
+            // Pair the MyPiSite back to the iOS Site we just inserted by
+            // matching slug — UUIDs are different but slug uniquely
+            // identifies the backend site.
+            appState.sites.firstIndex(where: { $0.mypiSiteSlug == main.slug })
+        }) {
+            appState.activeSiteIndex = mainID
+        } else if let firstID = addedIDs.first,
+                  let idx = appState.sites.firstIndex(where: { $0.id == firstID }) {
+            appState.activeSiteIndex = idx
+        }
+        dismiss()
+    }
+
+    private func persistCredentials(for site: Site, pinnedFingerprint: String?) throws {
+        try KeychainStore.shared.saveAPIKey(apiKey.trimmingCharacters(in: .whitespaces), for: site.id)
+        if let fp = pinnedFingerprint {
+            try KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
+        }
+    }
+
+    /// When the user adds multiple backend sites under one server, we
+    /// suffix each iOS Site's display name with the backend site so the
+    /// switcher is unambiguous: "Home Base – Cabin", "Home Base – Lab".
+    /// For a single-site add, we keep the user's original name unchanged
+    /// since there's nothing to disambiguate.
+    private func nameForSite(serverName: String, mypiSite: MyPiSite?) -> String {
+        guard let mypiSite else { return serverName }
+        // The "all sites" path always disambiguates; the "specific site"
+        // path follows the same convention so site switching feels
+        // consistent regardless of how the user chose to add it.
+        return "\(serverName) – \(mypiSite.name)"
     }
 
     /// Create and commit a demo site. Uses the RFC 2606 invalid `.invalid`

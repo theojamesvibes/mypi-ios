@@ -16,6 +16,18 @@ struct SiteFormView: View {
     @State private var pendingFingerprint: String?
     @State private var showCertTrust: Bool = false
 
+    // MARK: - Discovery state
+    //
+    // Lets users surface backend sites they hadn't picked at setup time
+    // (e.g. they chose "Main only" originally, then later wanted Cabin
+    // too). Discovery hits `/api/sites` against the live server and
+    // filters out backend sites already configured under the same URL,
+    // so the picker only offers genuinely new entries to add.
+    @State private var isDiscovering = false
+    @State private var discoveredSites: [MyPiSite] = []
+    @State private var showDiscovery = false
+    @State private var discoveryError: String?
+
     init(site: Site) {
         self.site = site
         _name = State(initialValue: site.name)
@@ -37,6 +49,18 @@ struct SiteFormView: View {
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                }
+                if let backend = site.mypiSiteName {
+                    LabeledContent("MyPi Site") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(backend).foregroundStyle(.secondary)
+                            if let slug = site.mypiSiteSlug {
+                                Text("/\(slug)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -66,6 +90,34 @@ struct SiteFormView: View {
                 }
             } footer: {
                 Text("Enable if your server uses a self-signed or internal CA certificate.")
+            }
+
+            if !site.isDemo {
+                Section {
+                    Button {
+                        Task { await discoverSiblings() }
+                    } label: {
+                        HStack {
+                            Text("Discover Other Sites on This Server")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if isDiscovering {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(isDiscovering)
+                    if let err = discoveryError {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("If this server hosts multiple MyPi sites, you can add the others as separate entries.")
+                }
             }
 
             if let msg = errorMessage {
@@ -107,6 +159,15 @@ struct SiteFormView: View {
                         errorMessage = "Certificate not trusted. The previous pin is unchanged."
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $showDiscovery) {
+            MyPiSitePicker(
+                serverName: site.name,
+                sites: discoveredSites,
+                hidesMainOnlyOption: true
+            ) { choice in
+                handleDiscoveryChoice(choice)
             }
         }
         .confirmationDialog(
@@ -218,7 +279,12 @@ struct SiteFormView: View {
             sortOrder: site.sortOrder,
             // Preserve the demo flag on edit so renaming a demo site
             // doesn't flip it to "real" and start hitting the network.
-            isDemo: site.isDemo
+            isDemo: site.isDemo,
+            // Preserve multi-site routing fields so renaming or editing
+            // a site doesn't drop the slug — same drop-on-the-floor bug
+            // that bit isDemo in 0.1.6.
+            mypiSiteSlug: site.mypiSiteSlug,
+            mypiSiteName: site.mypiSiteName
         )
 
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespaces)
@@ -240,6 +306,102 @@ struct SiteFormView: View {
 
         appState.updateSite(updated)
         dismiss()
+    }
+
+    // MARK: - Discovery
+
+    /// Fetch `/api/sites` against this server, filter out anything already
+    /// configured under the same baseURL, and present the picker if any
+    /// new sites remain. Single-site / legacy servers fall into the
+    /// "no new sites" branch silently — no scary error for the common case.
+    @MainActor
+    private func discoverSiblings() async {
+        discoveryError = nil
+        isDiscovering = true
+        defer { isDiscovering = false }
+
+        let client = appState.client(for: site)
+        let fetched: [MyPiSite]
+        do {
+            fetched = try await client.mypiSites()
+        } catch {
+            // Treat any failure as "endpoint not present / not multi-site"
+            // rather than as an error — the legacy server just doesn't
+            // know about /api/sites.
+            discoveryError = "This server didn't return a site list — it's probably running a single-site MyPi (1.10 or earlier)."
+            return
+        }
+
+        let existingSlugs: Set<String> = Set(
+            appState.sites
+                .filter { $0.baseURL == site.baseURL }
+                .compactMap { $0.mypiSiteSlug?.lowercased() }
+        )
+        // The active site is using "main / legacy" if its mypiSiteSlug is
+        // nil. In that case it implicitly covers the Main site, so the
+        // picker should also exclude Main from the list it offers.
+        let coversMainImplicitly = (site.mypiSiteSlug == nil)
+        let newSites = fetched.filter { mypiSite in
+            if existingSlugs.contains(mypiSite.slug.lowercased()) { return false }
+            if coversMainImplicitly && mypiSite.isMain { return false }
+            return true
+        }
+
+        if newSites.isEmpty {
+            discoveryError = fetched.isEmpty
+                ? "This server doesn't expose a site list."
+                : "Every site on this server is already added."
+            return
+        }
+
+        discoveredSites = newSites
+        showDiscovery = true
+    }
+
+    private func handleDiscoveryChoice(_ choice: MyPiSitePicker.Choice) {
+        switch choice {
+        case .mainOnly:
+            // The picker hides this option in discovery mode, but guard
+            // anyway in case future call sites pass it through.
+            return
+        case .specific(let mypiSite):
+            addSibling(mypiSite)
+        case .all:
+            for mypiSite in discoveredSites {
+                if !addSibling(mypiSite) { break }
+            }
+        }
+    }
+
+    /// Append a new iOS Site mirroring `site` (same URL, same API key,
+    /// same TLS settings) but pointing at the given backend site. Returns
+    /// false on Keychain failure so a multi-add bail-out doesn't silently
+    /// continue past a credential-storage error.
+    @discardableResult
+    private func addSibling(_ mypiSite: MyPiSite) -> Bool {
+        let key = KeychainStore.shared.apiKey(for: site.id) ?? ""
+        let sibling = Site(
+            name: "\(site.name) – \(mypiSite.name)",
+            baseURL: site.baseURL,
+            allowSelfSigned: site.allowSelfSigned,
+            pinnedCertFingerprint: site.pinnedCertFingerprint,
+            isDemo: false,
+            mypiSiteSlug: mypiSite.slug,
+            mypiSiteName: mypiSite.name
+        )
+        do {
+            if !key.isEmpty {
+                try KeychainStore.shared.saveAPIKey(key, for: sibling.id)
+            }
+            if let fp = site.pinnedCertFingerprint {
+                try KeychainStore.shared.saveCertFingerprint(fp, for: sibling.id)
+            }
+        } catch {
+            discoveryError = "Couldn't save credentials for \(mypiSite.name): \(error.localizedDescription)"
+            return false
+        }
+        appState.addSite(sibling)
+        return true
     }
 }
 

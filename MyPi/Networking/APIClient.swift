@@ -102,6 +102,15 @@ final class APIClient {
         return try await get("/api/health", authenticated: false)
     }
 
+    /// Discover the backend sites a multi-site MyPi server (1.11+) hosts.
+    /// Single-site / legacy servers don't expose this endpoint — callers
+    /// should treat any error as "single-site server" rather than a hard
+    /// failure (404 on legacy, 200 with one row on single-site multisite).
+    func mypiSites() async throws -> [MyPiSite] {
+        if site.isDemo { return DemoData.mypiSites() }
+        return try await get("/api/sites")
+    }
+
     /// Verify a candidate API key against an authenticated endpoint without
     /// having to persist it to the Keychain first. Throws `APIError` on 401.
     func verifyAPIKey(_ key: String) async throws {
@@ -167,8 +176,32 @@ final class APIClient {
 
     // MARK: - Generic request
 
+    /// Endpoints that are server-global rather than site-scoped. These
+    /// keep their original path even when `site.mypiSiteSlug` is set —
+    /// `/api/health` returns the server version (no site context) and
+    /// `/api/sites` returns the discovery list (rewriting it would
+    /// produce nonsense like `/api/sites/cabin/sites`).
+    private static let serverGlobalPathPrefixes: [String] = [
+        "/api/health",
+        "/api/sites",
+    ]
+
+    /// Apply multi-site routing to an `/api/...` path. When
+    /// `site.mypiSiteSlug` is nil — including for demo sites and for
+    /// legacy single-site servers — this returns the path unchanged, so
+    /// the server's legacy alias resolves to Main exactly like before.
+    private func resolvedPath(_ path: String) -> String {
+        guard let slug = site.mypiSiteSlug, !slug.isEmpty else { return path }
+        if Self.serverGlobalPathPrefixes.contains(where: { path.hasPrefix($0) }) {
+            return path
+        }
+        guard path.hasPrefix("/api/") else { return path }
+        return "/api/sites/\(slug)/" + String(path.dropFirst("/api/".count))
+    }
+
     func get<T: Decodable>(_ path: String, authenticated: Bool = true) async throws -> T {
-        guard let url = URL(string: path, relativeTo: site.baseURL)?.absoluteURL else {
+        let routed = resolvedPath(path)
+        guard let url = URL(string: routed, relativeTo: site.baseURL)?.absoluteURL else {
             throw URLError(.badURL)
         }
         var request = URLRequest(url: url)

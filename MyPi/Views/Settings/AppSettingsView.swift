@@ -52,6 +52,18 @@ struct AppSettingsView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
+                        if let backend = site.mypiSiteName {
+                            LabeledContent("MyPi Site") {
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(backend)
+                                    if let slug = site.mypiSiteSlug {
+                                        Text("/\(slug)")
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
                     }
                     statusRow
                     serverVersionRow
