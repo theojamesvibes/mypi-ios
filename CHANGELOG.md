@@ -4,6 +4,35 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.2.0] — 2026-04-24
+
+First minor-version bump — adds support for the multi-site backend feature shipping in MyPi 1.11.
+
+### Added
+
+- **Multi-site backend support.** A single MyPi server can now host up to ten "backend sites," each with its own collection of Pi-hole instances. The iOS app understands this without changing how users think about its own site list — the existing iOS Site abstraction stays one-MyPi-server-per-entry, with two new optional fields (`mypiSiteSlug`, `mypiSiteName`) carrying the backend-site identity.
+  - **Default behavior (no slug):** legacy un-prefixed routes (`/api/stats/summary`, etc.) — server resolves to its Main site automatically. Existing iOS Sites configured against a server that later upgrades to multi-site keep working with zero changes; they just see Main's data.
+  - **Per-backend-site routing (with slug):** `APIClient` rewrites every site-scoped request to `/api/sites/{slug}/...`. `/api/health` and `/api/sites` stay server-global and aren't rewritten. URLSession follows the server's slug-history 301s automatically when a backend slug is renamed, so no client-side migration is needed.
+- **`MyPiSitePicker` sheet** — three-way choice presented when the SetupSheet detects a multi-site server (≥ 2 entries from `GET /api/sites`):
+  1. **Use Main only** (recommended default — saves with `mypiSiteSlug = nil`)
+  2. **Pick one specific site** — saves with the chosen slug
+  3. **Add all N sites** — creates one iOS Site per backend site, activates Main, leaves the rest secondary in `sortOrder`
+  Single-site / legacy servers (`/api/sites` returns 404, empty array, or a single row) bypass the picker entirely — their setup flow is unchanged.
+- **Discover Other Sites on This Server** action in `SiteFormView`. Re-fetches `/api/sites`, filters out backend sites already configured under the same URL, and presents `MyPiSitePicker` (with the Main-only option hidden) so users who originally chose Main can pull in siblings later. Failed fetches are interpreted as "single-site server" and surfaced as a soft note rather than an error.
+- **Connection card → MyPi Site row** in Settings and SiteFormView's Server section, shown only when `mypiSiteSlug` is set. Displays the friendly name plus the slug in monospaced caption type. Site switcher entries created via the multi-site path are auto-named `"{server} – {backend site}"` so the dropdown is unambiguous on devices with both Main and a sibling configured.
+- **`MyPiSite` model** — decoded shape of `GET /api/sites` (id, name, slug, isMain, isActive, sortOrder, instanceCount, activeInstanceCount, createdAt). Hashable + Identifiable for use in pickers.
+
+### Changed
+
+- **`Site.init(from:)`** decodes the new `mypiSiteSlug` / `mypiSiteName` fields with `decodeIfPresent`, so existing `sites.json` from 0.1.x keeps loading cleanly without a migration. Memberwise `init` adds the two as optional defaulted parameters.
+- **`SiteFormView.commit`** now preserves `mypiSiteSlug` and `mypiSiteName` on edit, fixing the same drop-on-the-floor pattern that bit `isDemo` in 0.1.6.
+
+### Server compatibility
+
+- Built against MyPi `1.11.0-dev.x` (multi-site branch). Works against earlier server versions — `/api/sites` returns 404, the SetupSheet treats that as "legacy server, save normally," and every other API call uses the unchanged legacy path.
+
+---
+
 ## [0.1.10] — 2026-04-24
 
 ### Added

@@ -11,6 +11,15 @@ import Foundation
 /// returns empty, and time-range scaling is kept roughly proportional so
 /// switching between "Today" and "7d" still produces a believable chart.
 enum DemoData {
+    // MARK: - Site discovery
+
+    /// Demo mode reports a single-site server — that way the SetupSheet
+    /// flow doesn't show the multi-site picker for the synthetic demo
+    /// site, which would be confusing UX with no real choice behind it.
+    static func mypiSites() -> [MyPiSite] {
+        return []
+    }
+
     // MARK: - Health
 
     static func health() -> HealthResponse {

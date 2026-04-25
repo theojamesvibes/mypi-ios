@@ -100,7 +100,7 @@ What MyPi does **not** do: no analytics, no telemetry, no third-party SDKs, no c
 
 ## Version
 
-Current release: **0.1.10**
+Current release: **0.2.0**
 
 ## Privacy Policy
 

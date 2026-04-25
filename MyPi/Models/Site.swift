@@ -17,6 +17,18 @@ struct Site: Identifiable, Codable, Hashable {
     /// reviewers (and curious users) explore the UI without configuring a
     /// real MyPi server.
     var isDemo: Bool
+    /// MyPi multi-site routing slug. When non-nil, `APIClient` prefixes
+    /// every site-scoped request with `/api/sites/{slug}/`. When nil, the
+    /// app uses the legacy un-prefixed routes — which a multi-site server
+    /// resolves to its Main site automatically. So the default behavior
+    /// for an iOS site pointing at a multi-site server (slug=nil) is "show
+    /// only the Main site's data," matching the pre-multisite contract.
+    var mypiSiteSlug: String?
+    /// Display name of the backend site (e.g. "Cabin"). Stored alongside
+    /// the slug so the UI can show a friendly label without re-fetching
+    /// `/api/sites` on every render. Server keeps slug stable across name
+    /// changes; we update this opportunistically whenever discovery runs.
+    var mypiSiteName: String?
 
     init(
         id: UUID = UUID(),
@@ -25,7 +37,9 @@ struct Site: Identifiable, Codable, Hashable {
         allowSelfSigned: Bool = false,
         pinnedCertFingerprint: String? = nil,
         sortOrder: Int = 0,
-        isDemo: Bool = false
+        isDemo: Bool = false,
+        mypiSiteSlug: String? = nil,
+        mypiSiteName: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -34,6 +48,8 @@ struct Site: Identifiable, Codable, Hashable {
         self.pinnedCertFingerprint = pinnedCertFingerprint
         self.sortOrder = sortOrder
         self.isDemo = isDemo
+        self.mypiSiteSlug = mypiSiteSlug
+        self.mypiSiteName = mypiSiteName
     }
 
     /// Backward-compatible decoder — `isDemo` was added in 0.1.6, so
@@ -56,5 +72,7 @@ struct Site: Identifiable, Codable, Hashable {
         sortOrder = try c.decode(Int.self, forKey: .sortOrder)
         let decodedIsDemo = try c.decodeIfPresent(Bool.self, forKey: .isDemo) ?? false
         isDemo = decodedIsDemo || baseURL.host()?.lowercased() == "demo.mypi.invalid"
+        mypiSiteSlug = try c.decodeIfPresent(String.self, forKey: .mypiSiteSlug)
+        mypiSiteName = try c.decodeIfPresent(String.self, forKey: .mypiSiteName)
     }
 }
