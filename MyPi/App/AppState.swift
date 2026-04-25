@@ -75,6 +75,14 @@ final class AppState {
             // Leave `showSetupSheet` false so the error screen has the UI.
             loadError = error.localizedDescription
         }
+        // Best-effort migration for users who landed in the broken state
+        // before this fix shipped: any non-demo iOS Site with no backend
+        // slug is checked against /api/sites; if the server is multi-site
+        // we adopt Main's slug so subsequent fetches scope to Main only
+        // instead of hitting the aggregate-across-sites legacy alias.
+        Task { [weak self] in
+            await self?.migrateLegacyNilSlugs()
+        }
     }
 
     // MARK: - Public
@@ -176,6 +184,58 @@ final class AppState {
             }
         } catch {
             connectionStates[site.id] = .error(error.localizedDescription)
+        }
+    }
+
+    /// One-shot migration: any non-demo `Site` with `mypiSiteSlug == nil`
+    /// is probed against `/api/sites`. If the server is multi-site (≥ 2
+    /// active sites returned), the iOS Site is updated in-place to use
+    /// Main's slug, so its subsequent requests scope through
+    /// `/api/sites/{main-slug}/...` — which the server scopes correctly —
+    /// rather than the legacy `/api/...` alias which the server happens to
+    /// have implemented as cross-site aggregation.
+    ///
+    /// Single-site / legacy / unreachable servers are left alone: the
+    /// legacy alias is correct for them and the migration is harmless.
+    /// If the network isn't up yet, we wait briefly for `NetworkMonitor`
+    /// (which defaults to false post-0.1.4) to flip; if that times out we
+    /// just return and the migration retries on the next launch.
+    @MainActor
+    private func migrateLegacyNilSlugs() async {
+        // Wait up to ~2 s for the path monitor's first callback. It
+        // typically settles in under 100 ms, but fresh installs can have
+        // a longer delay before the first `pathUpdateHandler` fires.
+        for _ in 0..<10 where !NetworkMonitor.shared.isConnected {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard NetworkMonitor.shared.isConnected else { return }
+
+        // Snapshot candidates — `updateSite` mutates `sites`, so we work
+        // off a copy taken before any in-loop changes.
+        let candidates = sites.filter { !$0.isDemo && ($0.mypiSiteSlug?.isEmpty ?? true) }
+        guard !candidates.isEmpty else { return }
+
+        for candidate in candidates {
+            let mypiSites: [MyPiSite]
+            do {
+                mypiSites = try await client(for: candidate).mypiSites()
+            } catch {
+                continue  // server is single-site / legacy / unreachable
+            }
+            guard mypiSites.count >= 2,
+                  let main = mypiSites.first(where: { $0.isMain })
+            else {
+                continue  // truly single-site server — nothing to fix
+            }
+            // Look up the latest version of this site (in case something
+            // mutated it between the snapshot and now), apply the slug,
+            // and let `updateSite` invalidate the per-site client + VMs
+            // so the next dashboard fetch uses the corrected route.
+            guard let current = sites.first(where: { $0.id == candidate.id }) else { continue }
+            var updated = current
+            updated.mypiSiteSlug = main.slug
+            updated.mypiSiteName = main.name
+            updateSite(updated)
         }
     }
 
