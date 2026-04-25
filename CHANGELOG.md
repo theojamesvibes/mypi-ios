@@ -4,6 +4,16 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.2.1] — 2026-04-24
+
+### Fixed
+
+- **Main-only iOS Sites against multi-site MyPi servers were showing every site's Pi-hole instances mixed together.** The `/api/stats/summary` legacy alias is implemented server-side as cross-site aggregation (`site_id=None → all active instances across every site`), not Main-only as the design doc had implied. So an iOS Site with `mypiSiteSlug = nil` against a multi-site server saw the aggregate, not Main's data.
+  - **For new sites:** the SetupSheet's "Use Main only" choice now resolves Main from the discovered site list and stores its slug. Routing then goes through `/api/sites/{main-slug}/...`, which the server scopes correctly. The user's chosen server name stays clean (no `– Main` suffix) on this path so the switcher entry doesn't get visually heavier than it needs to be.
+  - **For sites already on disk:** `AppState.init` kicks off a background pass after launch — for each non-demo site with no slug, it probes `/api/sites`; if the server returns ≥ 2 sites, it adopts Main's slug and name in place. One-time, transparent, runs through the existing `updateSite` path so the per-site `APIClient` and view models reset cleanly. Single-site / legacy / unreachable servers are left alone — the legacy alias is correct for them, and the migration is a no-op.
+
+---
+
 ## [0.2.0] — 2026-04-24
 
 First minor-version bump — adds support for the multi-site backend feature shipping in MyPi 1.11.

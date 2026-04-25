@@ -239,18 +239,41 @@ struct SetupSheet: View {
         let pin = pendingPin
         switch choice {
         case .mainOnly:
-            commitSingleSite(pinnedFingerprint: pin, mypiSite: nil)
+            // Resolve Main's slug explicitly. The server's legacy
+            // /api/* alias aggregates across every site rather than
+            // scoping to Main, so saving slug=nil on a multi-site
+            // server would show all instances mixed together. Store
+            // the Main slug and let APIClient route through
+            // /api/sites/{main}/... which scopes correctly.
+            let main = discoveredSites.first(where: { $0.isMain })
+            commitSingleSite(
+                pinnedFingerprint: pin,
+                mypiSite: main,
+                suppressNameSuffix: true
+            )
         case .specific(let mypiSite):
-            commitSingleSite(pinnedFingerprint: pin, mypiSite: mypiSite)
+            commitSingleSite(
+                pinnedFingerprint: pin,
+                mypiSite: mypiSite,
+                suppressNameSuffix: false
+            )
         case .all:
             commitAllSites(pinnedFingerprint: pin, mypiSites: discoveredSites)
         }
     }
 
-    private func commitSingleSite(pinnedFingerprint: String?, mypiSite: MyPiSite?) {
+    private func commitSingleSite(
+        pinnedFingerprint: String?,
+        mypiSite: MyPiSite?,
+        suppressNameSuffix: Bool = false
+    ) {
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else { return }
         let site = Site(
-            name: nameForSite(serverName: resolvedName, mypiSite: mypiSite),
+            name: nameForSite(
+                serverName: resolvedName,
+                mypiSite: mypiSite,
+                suppressSuffix: suppressNameSuffix
+            ),
             baseURL: url,
             allowSelfSigned: allowSelfSigned,
             pinnedCertFingerprint: pinnedFingerprint,
@@ -324,16 +347,18 @@ struct SetupSheet: View {
         }
     }
 
-    /// When the user adds multiple backend sites under one server, we
+    /// When the user adds a specific backend site or all of them, we
     /// suffix each iOS Site's display name with the backend site so the
     /// switcher is unambiguous: "Home Base – Cabin", "Home Base – Lab".
-    /// For a single-site add, we keep the user's original name unchanged
-    /// since there's nothing to disambiguate.
-    private func nameForSite(serverName: String, mypiSite: MyPiSite?) -> String {
-        guard let mypiSite else { return serverName }
-        // The "all sites" path always disambiguates; the "specific site"
-        // path follows the same convention so site switching feels
-        // consistent regardless of how the user chose to add it.
+    /// For "Main only" we store Main's slug for routing but keep the
+    /// user's original server name (no suffix) — there's nothing to
+    /// disambiguate from when there's one entry per server.
+    private func nameForSite(
+        serverName: String,
+        mypiSite: MyPiSite?,
+        suppressSuffix: Bool = false
+    ) -> String {
+        guard let mypiSite, !suppressSuffix else { return serverName }
         return "\(serverName) – \(mypiSite.name)"
     }
 
