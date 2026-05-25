@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # CI workflow actions (checkout, ...). This is the only dependency surface the
+  # app has: it ships no third-party packages (no Swift Package Manager, CocoaPods
+  # or Carthage dependencies in project.yml), so there is no library ecosystem for
+  # Dependabot to track. If SPM dependencies are added later, add a matching
+  #   - package-ecosystem: "swift"
+  # entry here pointing at the Package.resolved location.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
