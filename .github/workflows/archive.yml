@@ -109,12 +109,34 @@ jobs:
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             archive
 
-      - name: Export IPA (manual signing)
+      - name: Export IPA and upload to App Store Connect
         env:
           TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
           PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          UPLOAD: ${{ github.event.inputs.upload }}
         run: |
           set -o pipefail
+          # `xcodebuild -exportArchive` with destination=upload exports AND uploads
+          # to App Store Connect using the API key — the modern, first-party
+          # replacement for the deprecated `altool`. With upload=false the
+          # destination is `export`, producing the signed IPA locally only (a safe
+          # dry run that needs no API credentials).
+          if [ "$UPLOAD" = "true" ]; then DESTINATION=upload; else DESTINATION=export; fi
+          echo "Export destination: $DESTINATION"
+
+          AUTH=()
+          if [ "$UPLOAD" = "true" ]; then
+            mkdir -p "$HOME/.appstoreconnect/private_keys"
+            KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
+            echo "$API_KEY_P8" > "$KEY_PATH"
+            AUTH=(-authenticationKeyPath "$KEY_PATH" \
+                  -authenticationKeyID "$API_KEY_ID" \
+                  -authenticationKeyIssuerID "$ISSUER_ID")
+          fi
+
           cat > ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -136,7 +158,7 @@ jobs:
             <key>uploadSymbols</key>
             <true/>
             <key>destination</key>
-            <string>export</string>
+            <string>${DESTINATION}</string>
           </dict>
           </plist>
           EOF
@@ -144,25 +166,8 @@ jobs:
             -exportArchive \
             -archivePath build/MyPi.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist ExportOptions.plist
-
-      - name: Upload to App Store Connect
-        if: ${{ github.event.inputs.upload == 'true' }}
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
-          API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
-        run: |
-          set -o pipefail
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
-          echo "$API_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
-          IPA="$(ls build/ipa/*.ipa | head -n 1)"
-          echo "Uploading: $IPA"
-          xcrun altool --upload-app \
-            --type ios \
-            --file "$IPA" \
-            --apiKey "$API_KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
+            -exportOptionsPlist ExportOptions.plist \
+            "${AUTH[@]}"
 
       - name: Upload archive artifact
         uses: actions/upload-artifact@v4
