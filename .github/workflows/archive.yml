@@ -1,20 +1,27 @@
 name: Archive
 
-# Archive + App Store Connect upload workflow. Holds off actually running
-# until the Apple Developer Program approval lands and the repo has the
-# secrets below configured. `workflow_dispatch` only — deliberately not
-# automatic on tag/release so a broken manifest doesn't send a silently
-# half-baked build to App Store Connect.
+# Archive + App Store Connect upload. Manual (workflow_dispatch) only — deliberately
+# not automatic on tag/release so a broken manifest can't silently push a half-baked
+# build to App Store Connect.
 #
-# Required repository secrets (add in Settings → Secrets and variables →
-# Actions before the first successful run):
+# Signing is fully MANUAL and headless: the distribution certificate (.p12) and the
+# App Store provisioning profile are imported from secrets, and xcodebuild is told to
+# use them explicitly (CODE_SIGN_STYLE=Manual). No Apple-account login and no profile
+# fetches happen during signing — only the final upload talks to App Store Connect.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
 #   APP_STORE_CONNECT_API_KEY_ID      — 10-char key ID from App Store Connect
 #   APP_STORE_CONNECT_API_ISSUER_ID   — Issuer UUID from the same page
-#   APP_STORE_CONNECT_API_KEY_P8      — contents of the .p8 file (plain text, including BEGIN/END)
+#   APP_STORE_CONNECT_API_KEY_P8      — contents of the .p8 file (plain text, incl. BEGIN/END)
 #   APPLE_DEVELOPMENT_TEAM            — 10-char Apple Team ID
 #   DISTRIBUTION_CERT_P12_BASE64      — base64 of the exported distribution .p12
 #   DISTRIBUTION_CERT_PASSWORD        — password set when exporting the .p12
 #   PROVISIONING_PROFILE_BASE64       — base64 of the App Store provisioning profile (.mobileprovision)
+#   PROVISIONING_PROFILE_NAME         — the profile's name EXACTLY as shown in the Apple
+#                                       Developer portal (used to match it during signing)
+#
+# Note: CODE_SIGN_IDENTITY below is "Apple Distribution" (current cert type). If your
+# distribution certificate is the older "iPhone Distribution" kind, change it to match.
 
 on:
   workflow_dispatch:
@@ -31,6 +38,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
 
+    env:
+      BUNDLE_ID: net.myssdomain.mypi
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,9 +55,8 @@ jobs:
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
         run: |
-          # Project.yml keeps DEVELOPMENT_TEAM empty for local simulator
-          # builds — patch it in just for the archive job so the generated
-          # project signs correctly.
+          # project.yml keeps DEVELOPMENT_TEAM empty for local simulator builds;
+          # patch it in for the archive so the generated project carries the team.
           sed -i.bak "s/DEVELOPMENT_TEAM: \"\"/DEVELOPMENT_TEAM: \"${DEVELOPMENT_TEAM}\"/" project.yml
           xcodegen generate
 
@@ -72,21 +81,40 @@ jobs:
           PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
         run: |
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$PROFILE_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/MyPi_AppStore.mobileprovision"
+          echo "$PROFILE_BASE64" | base64 --decode \
+            > "$HOME/Library/MobileDevice/Provisioning Profiles/MyPi_AppStore.mobileprovision"
 
-      - name: Build archive
+      - name: Build archive (manual signing, unique build number)
+        env:
+          TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
         run: |
           set -o pipefail
+          # CFBundleVersion must be unique and strictly increasing per marketing
+          # version, or App Store Connect rejects the upload. Unix epoch seconds is
+          # monotonic, fits Apple's integer limit, and never collides with an
+          # earlier manual "build 1".
+          BUILD_NUMBER="$(date -u +%s)"
+          echo "Build number: $BUILD_NUMBER"
           xcodebuild \
             -project MyPi.xcodeproj \
             -scheme MyPi \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/MyPi.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             archive
 
-      - name: Export IPA
+      - name: Export IPA (manual signing)
+        env:
+          TEAM_ID: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
         run: |
+          set -o pipefail
           cat > ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -95,7 +123,16 @@ jobs:
             <key>method</key>
             <string>app-store-connect</string>
             <key>teamID</key>
-            <string>${{ secrets.APPLE_DEVELOPMENT_TEAM }}</string>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
             <key>uploadSymbols</key>
             <true/>
             <key>destination</key>
@@ -107,8 +144,7 @@ jobs:
             -exportArchive \
             -archivePath build/MyPi.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist ExportOptions.plist \
-            -allowProvisioningUpdates
+            -exportOptionsPlist ExportOptions.plist
 
       - name: Upload to App Store Connect
         if: ${{ github.event.inputs.upload == 'true' }}
@@ -117,11 +153,14 @@ jobs:
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
+          set -o pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
           echo "$API_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
+          IPA="$(ls build/ipa/*.ipa | head -n 1)"
+          echo "Uploading: $IPA"
           xcrun altool --upload-app \
             --type ios \
-            --file build/ipa/MyPi.ipa \
+            --file "$IPA" \
             --apiKey "$API_KEY_ID" \
             --apiIssuer "$ISSUER_ID"
 
