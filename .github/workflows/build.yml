@@ -1,4 +1,4 @@
-name: Build
+name: Build & Test
 
 on:
   push:
@@ -45,3 +45,29 @@ jobs:
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
             build
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          # Pick an available iPhone simulator on the newest installed iOS runtime,
+          # so this is robust across Xcode/runtime versions on the runner image.
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          chosen = ""
+          for runtime in sorted(devices):
+              if "iOS" not in runtime:
+                  continue
+              for dev in devices[runtime]:
+                  if dev.get("isAvailable") and dev["name"].startswith("iPhone"):
+                      chosen = dev["udid"]
+          print(chosen)
+          ')
+          if [ -z "$DEVICE" ]; then echo "No iOS simulator available"; exit 1; fi
+          echo "Using simulator UDID: $DEVICE"
+          xcodebuild test \
+            -project MyPi.xcodeproj \
+            -scheme MyPi \
+            -configuration Debug \
+            -destination "id=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO
