@@ -88,14 +88,23 @@ struct QueryLogDecodingTests {
             """
             return try makeAPIDecoder().decode(QueryEntry.self, from: Data(json.utf8))
         }
-        #expect(try entry("GRAVITY").isBlocked)
-        #expect(try entry("REGEX_CNAME").isBlocked)
-        #expect(try entry("BLACKLIST").isBlocked)
+        // Every status in QueryEntry.isBlocked's set — a missed entry here
+        // would silently paint a blocked query green in the UI.
+        for status in ["GRAVITY", "REGEX", "BLACKLIST",
+                       "EXTERNAL_BLOCKED_IP", "EXTERNAL_BLOCKED_NULL", "EXTERNAL_BLOCKED_NXDOMAIN",
+                       "GRAVITY_CNAME", "REGEX_CNAME", "BLACKLIST_CNAME"] {
+            #expect(try entry(status).isBlocked, "expected \(status) to classify as blocked")
+            #expect(try entry(status).statusColor == "red")
+        }
         #expect(try entry("CACHE").isCached)
         #expect(try entry("CACHE_STALE").isCached)
-        #expect(try entry("FORWARDED").statusColor == "green")
         #expect(try entry("CACHE").statusColor == "blue")
-        #expect(try entry("GRAVITY").statusColor == "red")
+        #expect(try entry("FORWARDED").statusColor == "green")
+        // Defensive: an unrecognised status falls through to "green" (the
+        // permitted bucket) rather than crashing or returning empty.
+        #expect(try entry("FUTURE_STATUS_NOT_YET_KNOWN").statusColor == "green")
+        #expect(!(try entry("FORWARDED").isBlocked))
+        #expect(!(try entry("FORWARDED").isCached))
     }
 
     @Test func unparseableTimestampThrows() {

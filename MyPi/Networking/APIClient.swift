@@ -190,7 +190,10 @@ final class APIClient {
     /// `site.mypiSiteSlug` is nil — including for demo sites and for
     /// legacy single-site servers — this returns the path unchanged, so
     /// the server's legacy alias resolves to Main exactly like before.
-    private func resolvedPath(_ path: String) -> String {
+    /// `internal` rather than `private` so unit tests can exercise the
+    /// path-rewriting rules directly (this is server-routing logic, not
+    /// just an implementation detail).
+    func resolvedPath(_ path: String) -> String {
         guard let slug = site.mypiSiteSlug, !slug.isEmpty else { return path }
         if Self.serverGlobalPathPrefixes.contains(where: { path.hasPrefix($0) }) {
             return path
