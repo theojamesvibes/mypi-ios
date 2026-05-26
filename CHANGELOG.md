@@ -4,6 +4,14 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.2.2] — 2026-05-26
+
+### Fixed
+
+- **Cold-launch Dashboard hang on first upgrade to 0.2.1 against a multi-site MyPi server.** The 0.2.1 nil-slug migration in `AppState.migrateLegacyNilSlugs` calls `updateSite`, which invalidates the active `DashboardViewModel` and creates a fresh one — but the SwiftUI view identity at `ContentView.swift` was `DashboardView(vm: vm).id(vm.site.id)`, and the site UUID stays stable across migration (only the slug/name fields change). SwiftUI therefore updated the view in place instead of re-mounting, so `.onAppear { vm.start() }` never fired on the replacement VM and the Dashboard stayed on the loading spinner indefinitely. Switching to Query Log and back unblocked it because `UIPageViewController` re-adds the child VC's view on tab return, which re-fires `.onAppear`. Same latent bug existed on the Query Log tab. Fix: include the slug in both views' `.id(...)` so the migration's slug change flips the identity, triggering a re-mount and a fresh `vm.start()`. One-time-per-device bug, only on first launch after upgrading to 0.2.1 against a multi-site server.
+
+---
+
 ## [0.2.1] — 2026-04-24
 
 ### Fixed
