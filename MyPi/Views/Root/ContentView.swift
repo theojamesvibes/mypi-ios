@@ -169,13 +169,17 @@ private struct MainTabView: View {
                 // .id(site) forces SwiftUI to rebuild the view when the
                 // active site changes, firing the old vm's .onDisappear
                 // (stopping its poll) and the new vm's .onAppear so the
-                // two site states don't interleave.
-                return AnyView(DashboardView(vm: vm).id(vm.site.id))
+                // two site states don't interleave. Slug is included so the
+                // 0.2.1 nil-slug migration (which replaces the VM in place
+                // while keeping the site UUID stable) also re-mounts the
+                // view — otherwise .onAppear never fires on the new VM and
+                // the dashboard hangs on the loading spinner.
+                return AnyView(DashboardView(vm: vm).id("\(vm.site.id):\(vm.site.mypiSiteSlug ?? "")"))
             }
             return AnyView(EmptyView())
         case .queryLog:
             if let vm = appState.queryLogVM {
-                return AnyView(QueryLogView(vm: vm).id(vm.site.id))
+                return AnyView(QueryLogView(vm: vm).id("\(vm.site.id):\(vm.site.mypiSiteSlug ?? "")"))
             }
             return AnyView(EmptyView())
         case .settings:
