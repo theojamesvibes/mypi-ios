@@ -4,6 +4,14 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Archive workflow rejected at upload with "This app was built with the iOS 18.5 SDK."** The `Select Xcode` step in `archive.yml` pointed at the runner's default `/Applications/Xcode.app`, which resolves to Xcode 16.x (iOS 18.5 SDK) on `macos-latest`. App Store Connect now requires the iOS 26 SDK (Xcode 26+). The step now selects the newest installed `Xcode_26*.app`, fails loudly listing the available Xcodes if none is present, and prints the selected Xcode version and iOS SDK for confirmation. CI-only change; no app behavior change.
+
+---
+
 ## [0.2.2] — 2026-05-26
 
 ### Fixed
