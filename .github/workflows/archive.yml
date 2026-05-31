@@ -183,7 +183,7 @@ jobs:
             "${AUTH[@]}"
 
       - name: Upload archive artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: MyPi-archive
           path: build/MyPi.xcarchive
