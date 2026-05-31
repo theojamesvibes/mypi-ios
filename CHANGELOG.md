@@ -12,7 +12,7 @@ All notable changes to MyPi iOS are documented here.
 
 ### Changed
 
-- **Bumped GitHub Actions to Node 24 runtimes.** `actions/checkout@v4` → `@v5` (both workflows) and `actions/upload-artifact@v4` → `@v5`, ahead of GitHub forcing Node 24 on 2026-06-16 and removing Node 20 on 2026-09-16. Clears the Node.js 20 deprecation warning. CI-only.
+- **Bumped GitHub Actions to Node 24 runtimes.** `actions/checkout@v4` → `@v5` (both workflows) and `actions/upload-artifact@v4` → `@v6`, ahead of GitHub forcing Node 24 on 2026-06-16 and removing Node 20 on 2026-09-16. Clears the Node.js 20 deprecation warning. (`upload-artifact@v5` still ships on Node 20; `@v6` is the first node24 major.) CI-only.
 
 ---
 
