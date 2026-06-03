@@ -105,3 +105,7 @@ Current release: **0.2.1**
 ## Privacy Policy
 
 Live at <https://theojamesvibes.github.io/mypi-ios/privacy> once GitHub Pages is enabled on the `/docs` folder (Settings → Pages → deploy from branch `main`, folder `/docs`). Source in [`docs/privacy.md`](docs/privacy.md).
+
+## Ownership & License
+
+**MyPi**, the **MyPi Companion** iOS app, and the [MyPi server](https://github.com/theojamesvibes/mypi) are products of **TIA Partners, LLC** — see <https://www.tia-partners.com/#apps>. The same entity owns the MyPi brand, the App Store listing, and these repositories; there is no third-party brand involved. Licensed under the MIT License (see [`LICENSE`](LICENSE)).
