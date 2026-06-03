@@ -10,21 +10,23 @@ All notable changes to MyPi iOS are documented here.
 
 - **Standardized brand ownership on TIA Partners, LLC to clear App Review Guideline 4.1(b) (Copycats).** App Review rejected build 0.2.2 because the app is branded "MyPi" while our public identity was fragmented across four names for one owner (App Store account `TIA Partners, LLC`, App Store copyright `theojamesvibes`, `LICENSE` `Theo James`, GitHub `theojamesvibes`) — so a reviewer couldn't verify we own the MyPi brand and read it as an unauthorized third-party brand. Aligned everything on the App Store account holder: `LICENSE` copyright → `TIA Partners, LLC`, a new **Ownership & License** section in the README tying MyPi → TIA Partners, LLC, the App Store copyright field in `docs/appstore-metadata.md` → `© 2026 TIA Partners, LLC`, and a **Settings → About** screen line naming the developer (TIA Partners, LLC) with a link to tia-partners.com. Resolution runbook and Resolution Center reply: `docs/appstore-41b-copycats-response.md`. The About-screen text is the only binary change; the rest is metadata/docs and is typically resolved by replying in Resolution Center without a new build.
 
+- **Corrected `actions/upload-artifact` to v6.** `@v5` — which shipped in 0.2.2 — still runs on Node 20; `@v6` is the first Node 24 major. CI-only follow-up that landed after the 0.2.2 build.
+
+---
+
+## [0.2.2] — 2026-05-31
+
+The build submitted to App Review (commit `b5973e1`).
+
 ### Fixed
 
 - **Archive workflow rejected at upload with "This app was built with the iOS 18.5 SDK."** The `Select Xcode` step in `archive.yml` pointed at the runner's default `/Applications/Xcode.app`, which resolves to Xcode 16.x (iOS 18.5 SDK) on `macos-latest`. App Store Connect now requires the iOS 26 SDK (Xcode 26+). The step now selects the newest installed `Xcode_26*.app`, fails loudly listing the available Xcodes if none is present, and prints the selected Xcode version and iOS SDK for confirmation. CI-only change; no app behavior change.
 
+- **Cold-launch Dashboard hang on first upgrade to 0.2.1 against a multi-site MyPi server.** The 0.2.1 nil-slug migration in `AppState.migrateLegacyNilSlugs` calls `updateSite`, which invalidates the active `DashboardViewModel` and creates a fresh one — but the SwiftUI view identity at `ContentView.swift` was `DashboardView(vm: vm).id(vm.site.id)`, and the site UUID stays stable across migration (only the slug/name fields change). SwiftUI therefore updated the view in place instead of re-mounting, so `.onAppear { vm.start() }` never fired on the replacement VM and the Dashboard stayed on the loading spinner indefinitely. Switching to Query Log and back unblocked it because `UIPageViewController` re-adds the child VC's view on tab return, which re-fires `.onAppear`. Same latent bug existed on the Query Log tab. Fix: include the slug in both views' `.id(...)` so the migration's slug change flips the identity, triggering a re-mount and a fresh `vm.start()`. One-time-per-device bug, only on first launch after upgrading to 0.2.1 against a multi-site server.
+
 ### Changed
 
-- **Bumped GitHub Actions to Node 24 runtimes.** `actions/checkout@v4` → `@v5` (both workflows) and `actions/upload-artifact@v4` → `@v6`, ahead of GitHub forcing Node 24 on 2026-06-16 and removing Node 20 on 2026-09-16. Clears the Node.js 20 deprecation warning. (`upload-artifact@v5` still ships on Node 20; `@v6` is the first node24 major.) CI-only.
-
----
-
-## [0.2.2] — 2026-05-26
-
-### Fixed
-
-- **Cold-launch Dashboard hang on first upgrade to 0.2.1 against a multi-site MyPi server.** The 0.2.1 nil-slug migration in `AppState.migrateLegacyNilSlugs` calls `updateSite`, which invalidates the active `DashboardViewModel` and creates a fresh one — but the SwiftUI view identity at `ContentView.swift` was `DashboardView(vm: vm).id(vm.site.id)`, and the site UUID stays stable across migration (only the slug/name fields change). SwiftUI therefore updated the view in place instead of re-mounting, so `.onAppear { vm.start() }` never fired on the replacement VM and the Dashboard stayed on the loading spinner indefinitely. Switching to Query Log and back unblocked it because `UIPageViewController` re-adds the child VC's view on tab return, which re-fires `.onAppear`. Same latent bug existed on the Query Log tab. Fix: include the slug in both views' `.id(...)` so the migration's slug change flips the identity, triggering a re-mount and a fresh `vm.start()`. One-time-per-device bug, only on first launch after upgrading to 0.2.1 against a multi-site server.
+- **Bumped GitHub Actions to Node 24 runtimes.** `actions/checkout@v4` → `@v5` (both workflows) and `actions/upload-artifact@v4` → `@v5`, ahead of GitHub forcing Node 24 on 2026-06-16 and removing Node 20 on 2026-09-16. (`upload-artifact@v5` was later corrected to `@v6` — see Unreleased.) CI-only.
 
 ---
 
