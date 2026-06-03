@@ -52,9 +52,9 @@ App Store Connect asks for a contact for the review team and for user support. B
 ## Copyright
 
 ```
-© 2026 theojamesvibes
+© 2026 TIA Partners, LLC
 ```
-*Adjust to the legal name / handle you want displayed on the product page.*
+*Must match the App Store Connect account holder (TIA Partners, LLC) so the publisher and the MyPi brand owner read as the same legal entity — this is what resolves the 4.1(b) copycat flag.*
 
 ---
 

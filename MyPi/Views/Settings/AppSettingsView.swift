@@ -91,6 +91,12 @@ struct AppSettingsView: View {
 
                 Section("About") {
                     LabeledContent("App Version", value: appVersion)
+                    LabeledContent("Developer", value: "TIA Partners, LLC")
+                    Link("tia-partners.com",
+                         destination: URL(string: "https://www.tia-partners.com/#apps")!)
+                    Text("© 2026 TIA Partners, LLC")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Settings")

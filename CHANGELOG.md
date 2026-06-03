@@ -6,6 +6,10 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Standardized brand ownership on TIA Partners, LLC to clear App Review Guideline 4.1(b) (Copycats).** App Review rejected build 0.2.2 because the app is branded "MyPi" while our public identity was fragmented across four names for one owner (App Store account `TIA Partners, LLC`, App Store copyright `theojamesvibes`, `LICENSE` `Theo James`, GitHub `theojamesvibes`) — so a reviewer couldn't verify we own the MyPi brand and read it as an unauthorized third-party brand. Aligned everything on the App Store account holder: `LICENSE` copyright → `TIA Partners, LLC`, a new **Ownership & License** section in the README tying MyPi → TIA Partners, LLC, the App Store copyright field in `docs/appstore-metadata.md` → `© 2026 TIA Partners, LLC`, and a **Settings → About** screen line naming the developer (TIA Partners, LLC) with a link to tia-partners.com. Resolution runbook and Resolution Center reply: `docs/appstore-41b-copycats-response.md`. The About-screen text is the only binary change; the rest is metadata/docs and is typically resolved by replying in Resolution Center without a new build.
+
 ### Fixed
 
 - **Archive workflow rejected at upload with "This app was built with the iOS 18.5 SDK."** The `Select Xcode` step in `archive.yml` pointed at the runner's default `/Applications/Xcode.app`, which resolves to Xcode 16.x (iOS 18.5 SDK) on `macos-latest`. App Store Connect now requires the iOS 26 SDK (Xcode 26+). The step now selects the newest installed `Xcode_26*.app`, fails loudly listing the available Xcodes if none is present, and prints the selected Xcode version and iOS SDK for confirmation. CI-only change; no app behavior change.
