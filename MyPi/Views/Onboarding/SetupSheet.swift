@@ -120,9 +120,10 @@ struct SetupSheet: View {
         .sheet(isPresented: $showSitePicker) {
             MyPiSitePicker(
                 serverName: resolvedName,
-                sites: discoveredSites
-            ) { choice in
-                handlePickerChoice(choice)
+                sites: discoveredSites,
+                preselected: mainSelection
+            ) { selection in
+                handlePickerSelection(selection)
             }
         }
         .interactiveDismissDisabled(appState.sites.isEmpty)
@@ -235,30 +236,34 @@ struct SetupSheet: View {
         commitSingleSite(pinnedFingerprint: pinnedFingerprint, mypiSite: nil)
     }
 
-    private func handlePickerChoice(_ choice: MyPiSitePicker.Choice) {
+    /// Main's id, pre-ticked in the picker so the common "just add this
+    /// server" case is one tap. Empty if the discovery list somehow has no
+    /// Main (defensive — a well-formed multi-site server always reports one).
+    private var mainSelection: Set<MyPiSite.ID> {
+        guard let main = discoveredSites.first(where: { $0.isMain }) else { return [] }
+        return [main.id]
+    }
+
+    /// Commit whatever the user ticked in the picker. The selection is
+    /// always non-empty (the Add button enforces it).
+    ///
+    /// - One site, and it's Main: store Main's slug but keep the server name
+    ///   clean (no "– Main" suffix). Routing still goes through
+    ///   `/api/sites/{main}/...` rather than the legacy `/api/*` alias, which
+    ///   aggregates across every site and would otherwise mix instances.
+    /// - One site, not Main: a single specific backend site.
+    /// - Two or more: one iOS Site per pick, Main (if chosen) made active.
+    private func handlePickerSelection(_ selection: [MyPiSite]) {
         let pin = pendingPin
-        switch choice {
-        case .mainOnly:
-            // Resolve Main's slug explicitly. The server's legacy
-            // /api/* alias aggregates across every site rather than
-            // scoping to Main, so saving slug=nil on a multi-site
-            // server would show all instances mixed together. Store
-            // the Main slug and let APIClient route through
-            // /api/sites/{main}/... which scopes correctly.
-            let main = discoveredSites.first(where: { $0.isMain })
+        guard let first = selection.first else { return }
+        if selection.count == 1 {
             commitSingleSite(
                 pinnedFingerprint: pin,
-                mypiSite: main,
-                suppressNameSuffix: true
+                mypiSite: first,
+                suppressNameSuffix: first.isMain
             )
-        case .specific(let mypiSite):
-            commitSingleSite(
-                pinnedFingerprint: pin,
-                mypiSite: mypiSite,
-                suppressNameSuffix: false
-            )
-        case .all:
-            commitAllSites(pinnedFingerprint: pin, mypiSites: discoveredSites)
+        } else {
+            commitAllSites(pinnedFingerprint: pin, mypiSites: selection)
         }
     }
 

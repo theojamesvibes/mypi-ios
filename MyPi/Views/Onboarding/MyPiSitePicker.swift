@@ -1,129 +1,105 @@
 import SwiftUI
 
-/// Sheet that lets the user choose how to add a multi-site MyPi server.
-/// Used by both `SetupSheet` (initial connection — shows every site) and
-/// `SiteFormView` (post-setup discovery — pre-filtered to sites not yet
-/// configured).
+/// Multi-select picklist shown when a multi-site MyPi server (1.11+) is
+/// detected. Used by both `SetupSheet` (initial connection — lists every
+/// site, with Main pre-selected) and `SiteFormView` (post-setup discovery
+/// — pre-filtered to sites not yet configured).
 ///
-/// Returns one of three choices via `onChoice`:
-/// - `.mainOnly`: save with `mypiSiteSlug = nil`, hitting legacy routes
-///   that the server resolves to Main. Same data the user got pre-1.11.
-/// - `.specific(MyPiSite)`: save one iOS Site pointing at that backend
-///   site via its slug.
-/// - `.all`: caller adds every offered site as a separate iOS Site,
-///   activating Main and leaving the rest secondary (per the user's
-///   preference set during the multi-site design discussion).
+/// The user ticks whichever sites they want and taps **Add**; the selected
+/// `[MyPiSite]` set is handed back via `onAdd`. The caller decides how to
+/// commit them (name suffixes, which becomes active, Keychain writes).
+/// Returning the raw selection keeps this view free of any Site/Keychain
+/// knowledge — it's purely a checklist.
 struct MyPiSitePicker: View {
     let serverName: String
     let sites: [MyPiSite]
-    /// When true, hides the "Use Main only" option — used by the
-    /// post-setup discovery path where the user already has an entry
-    /// covering Main and is just looking to add siblings.
-    var hidesMainOnlyOption: Bool = false
-    let onChoice: (Choice) -> Void
+    /// Site IDs ticked when the sheet first appears. `SetupSheet` passes
+    /// Main here so the common "just add this server" case is one tap;
+    /// the discovery flow passes nothing, leaving the user to choose.
+    var preselected: Set<MyPiSite.ID> = []
+    /// Called with the chosen sites (always non-empty — the Add button is
+    /// disabled when the selection is empty).
+    let onAdd: ([MyPiSite]) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var selected: Set<MyPiSite.ID> = []
 
-    enum Choice {
-        case mainOnly
-        case specific(MyPiSite)
-        case all
+    private var orderedSites: [MyPiSite] {
+        sites.sorted { lhs, rhs in
+            // Main first, then sortOrder, then name (stable fallback) — same
+            // ordering the commit path uses, so the list reads top-to-bottom
+            // in the order entries get created.
+            if lhs.isMain != rhs.isMain { return lhs.isMain }
+            if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
+        }
     }
+
+    private var selectedCount: Int { selected.count }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("\(serverName) hosts \(sites.count) sites. Choose how to add it.")
+                    Text("\(serverName) hosts \(sites.count) sites. Select the ones you want to add — each becomes its own entry you can switch between.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 
-                if !hidesMainOnlyOption {
-                    Section {
-                        choiceButton(
-                            title: "Use Main site only",
-                            subtitle: "Recommended. Uses the server's default site via legacy routes.",
-                            systemImage: "star.fill"
-                        ) {
-                            onChoice(.mainOnly)
-                            dismiss()
-                        }
-                    } header: {
-                        Text("Default")
-                    }
-                }
-
                 Section {
-                    ForEach(sites) { mypiSite in
+                    ForEach(orderedSites) { mypiSite in
                         Button {
-                            onChoice(.specific(mypiSite))
-                            dismiss()
+                            toggle(mypiSite.id)
                         } label: {
-                            siteRow(mypiSite)
+                            siteRow(mypiSite, isOn: selected.contains(mypiSite.id))
                         }
+                        .buttonStyle(.plain)
                     }
                 } header: {
-                    Text(hidesMainOnlyOption ? "Available sites" : "Pick one site")
-                }
-
-                if sites.count > 1 {
-                    Section {
-                        choiceButton(
-                            title: "Add all \(sites.count) sites",
-                            subtitle: "Creates one entry per site. \(mainName ?? "Main") becomes active.",
-                            systemImage: "rectangle.stack.fill.badge.plus"
-                        ) {
-                            onChoice(.all)
-                            dismiss()
-                        }
-                    }
+                    Text("Sites")
                 }
             }
-            .navigationTitle("Choose Sites")
+            .navigationTitle("Add Sites")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-            }
-        }
-    }
-
-    private var mainName: String? {
-        sites.first(where: { $0.isMain })?.name
-    }
-
-    @ViewBuilder
-    private func choiceButton(
-        title: String,
-        subtitle: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(addButtonTitle) {
+                        let chosen = orderedSites.filter { selected.contains($0.id) }
+                        onAdd(chosen)
+                        dismiss()
+                    }
+                    .disabled(selected.isEmpty)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            }
+            .onAppear {
+                // Seed once. Guard against re-seeding on a re-render so a
+                // user who deliberately unticked Main doesn't get it back.
+                if selected.isEmpty { selected = preselected }
             }
         }
     }
 
+    private var addButtonTitle: String {
+        selectedCount > 1 ? "Add \(selectedCount)" : "Add"
+    }
+
+    private func toggle(_ id: MyPiSite.ID) {
+        if selected.contains(id) {
+            selected.remove(id)
+        } else {
+            selected.insert(id)
+        }
+    }
+
     @ViewBuilder
-    private func siteRow(_ mypiSite: MyPiSite) -> some View {
-        HStack {
+    private func siteRow(_ mypiSite: MyPiSite, isOn: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                .font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(mypiSite.name)
@@ -137,10 +113,8 @@ struct MyPiSitePicker: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
+        .contentShape(Rectangle())
     }
 
     private var mainBadge: some View {
