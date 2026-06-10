@@ -164,10 +164,9 @@ struct SiteFormView: View {
         .sheet(isPresented: $showDiscovery) {
             MyPiSitePicker(
                 serverName: site.name,
-                sites: discoveredSites,
-                hidesMainOnlyOption: true
-            ) { choice in
-                handleDiscoveryChoice(choice)
+                sites: discoveredSites
+            ) { selection in
+                handleDiscoverySelection(selection)
             }
         }
         .confirmationDialog(
@@ -358,18 +357,11 @@ struct SiteFormView: View {
         showDiscovery = true
     }
 
-    private func handleDiscoveryChoice(_ choice: MyPiSitePicker.Choice) {
-        switch choice {
-        case .mainOnly:
-            // The picker hides this option in discovery mode, but guard
-            // anyway in case future call sites pass it through.
-            return
-        case .specific(let mypiSite):
-            addSibling(mypiSite)
-        case .all:
-            for mypiSite in discoveredSites {
-                if !addSibling(mypiSite) { break }
-            }
+    private func handleDiscoverySelection(_ selection: [MyPiSite]) {
+        for mypiSite in selection {
+            // Stop on the first Keychain failure so a multi-add doesn't
+            // silently continue past a credential-storage error.
+            if !addSibling(mypiSite) { break }
         }
     }
 

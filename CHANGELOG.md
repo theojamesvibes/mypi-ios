@@ -6,7 +6,13 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] — 2026-06-10
+
 ### Changed
+
+- **Reworked the multi-site picker into a multi-select checklist.** When setup connects to a multi-site MyPi server (≥ 2 sites from `GET /api/sites`), the picker now lists every backend site with a tappable checkmark and a single **Add** button, replacing the old three-way prompt (Use Main only / Pick one / Add all). Main is pre-selected so the common "just add this server" case is still one tap, but the user can tick any combination of additional sites and add them all at once — each becomes its own switchable entry. Selecting only Main keeps the clean server name (routed through `/api/sites/{main-slug}/...`); selecting more suffixes each entry with its backend-site name. The same checklist now backs the post-setup **Discover Other Sites on This Server** flow in `SiteFormView`, so adding several siblings later is one pass instead of one-at-a-time. Internally, `MyPiSitePicker` hands the caller the raw `[MyPiSite]` selection (via `onAdd`); the old `Choice` enum and `hidesMainOnlyOption` flag are gone.
 
 - **Standardized brand ownership on TIA Partners, LLC to clear App Review Guideline 4.1(b) (Copycats).** App Review rejected build 0.2.2 because the app is branded "MyPi" while our public identity was fragmented across four names for one owner (App Store account `TIA Partners, LLC`, App Store copyright `theojamesvibes`, `LICENSE` `Theo James`, GitHub `theojamesvibes`) — so a reviewer couldn't verify we own the MyPi brand and read it as an unauthorized third-party brand. Aligned everything on the App Store account holder: `LICENSE` copyright → `TIA Partners, LLC`, a new **Ownership & License** section in the README tying MyPi → TIA Partners, LLC, the App Store copyright field in `docs/appstore-metadata.md` → `© 2026 TIA Partners, LLC`, and a **Settings → About** screen line naming the developer (TIA Partners, LLC) with a link to tia-partners.com. Resolution runbook and Resolution Center reply: `docs/appstore-41b-copycats-response.md`. The About-screen text is the only binary change; the rest is metadata/docs and is typically resolved by replying in Resolution Center without a new build.
 
