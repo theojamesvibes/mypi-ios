@@ -6,6 +6,10 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Bumped GitHub Actions to current majors.** `actions/checkout@v5` → `@v6` and `actions/upload-artifact@v6` → `@v7` (Dependabot #2, #3). CI-only; no app behavior change.
+
 ---
 
 ## [0.3.0] — 2026-06-10
