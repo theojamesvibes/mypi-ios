@@ -125,7 +125,21 @@ pi-hole,dns,network,monitoring,dashboard,adblock,homelab,selfhosted,privacy,piho
 
 ## "What's New in This Version" (per-release release notes, 4000 chars)
 
-Drafted for the first public release. Update per version.
+Update per version. Newest at top; paste only the current version's block into the App Store Connect field.
+
+### 0.3.1 (current)
+
+```
+• Fixed the Top Blocked Domains panel on iPad so it lines up with the Top Permitted and Top Clients panels — it now stays top-aligned and full-height even when only a few domains are listed.
+```
+
+### 0.3.0
+
+```
+• Reworked multi-site setup into a single multi-select checklist — add any combination of sites on your MyPi server in one step.
+```
+
+### First public release
 
 ```
 First public release of MyPi Companion. Full client coverage of the MyPi aggregation API:
