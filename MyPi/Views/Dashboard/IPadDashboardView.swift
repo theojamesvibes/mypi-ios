@@ -130,7 +130,7 @@ private struct TopListsRow: View {
     let top: TopStatsResponse
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), alignment: .leading, spacing: 16) {
+        HStack(alignment: .top, spacing: 16) {
             TopColumn(
                 title: "Top Permitted Domains",
                 icon: "checkmark.circle",
@@ -187,7 +187,7 @@ private struct TopColumn: View {
                 Text("No data").font(.footnote).foregroundStyle(.secondary).padding()
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
     }
 }

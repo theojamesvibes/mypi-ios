@@ -6,9 +6,17 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+---
+
+## [0.3.1] — 2026-06-30
+
+### Fixed
+
+- **iPad Dashboard top-lists row mis-rendered when a column had few entries.** The three top-list cards (Top Permitted / Top Blocked / Top Clients) were laid out in a `LazyVGrid` whose flexible columns default to centered vertical alignment, so a short card (e.g. only 4 blocked domains) floated centered between its taller neighbors and sized only to its own content instead of matching the row. Switched the row to an `HStack(alignment: .top)` with each card expanding to fill the row height (`maxHeight: .infinity`, `.topLeading`), so all three boxes are now equal-height and top-justified regardless of how many entries each holds. iPad-only layout change; no behavior change.
+
 ### Changed
 
-- **Bumped GitHub Actions to current majors.** `actions/checkout@v5` → `@v6` and `actions/upload-artifact@v6` → `@v7` (Dependabot #2, #3). CI-only; no app behavior change.
+- **Bumped GitHub Actions to current majors.** `actions/checkout@v5` → `@v6` → `@v7` and `actions/upload-artifact@v6` → `@v7` (Dependabot #2, #3, #4). CI-only; no app behavior change.
 
 ---
 
