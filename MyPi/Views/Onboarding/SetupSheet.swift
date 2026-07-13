@@ -280,7 +280,11 @@ struct SetupSheet: View {
                 suppressSuffix: suppressNameSuffix
             ),
             baseURL: url,
-            allowSelfSigned: allowSelfSigned,
+            // Persist self-signed mode only when a fingerprint was actually
+            // pinned. If the toggle was on but the server's cert passed OS
+            // trust, no pin exists — saving allowSelfSigned=true then would
+            // leave the site accepting any future certificate unpinned.
+            allowSelfSigned: pinnedFingerprint != nil,
             pinnedCertFingerprint: pinnedFingerprint,
             mypiSiteSlug: mypiSite?.slug,
             mypiSiteName: mypiSite?.name
@@ -313,7 +317,8 @@ struct SetupSheet: View {
             let site = Site(
                 name: nameForSite(serverName: resolvedName, mypiSite: mypiSite),
                 baseURL: url,
-                allowSelfSigned: allowSelfSigned,
+                // Same pin-implies-self-signed rule as commitSingleSite.
+                allowSelfSigned: pinnedFingerprint != nil,
                 pinnedCertFingerprint: pinnedFingerprint,
                 mypiSiteSlug: mypiSite.slug,
                 mypiSiteName: mypiSite.name

@@ -8,6 +8,18 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.3.2] — 2026-07-13
+
+### Security
+
+- **Closed a fail-open TLS state: a site saved with "Allow self-signed" but no pinned fingerprint accepted any certificate.** The unpinned-accept branch in `TLSDelegate` exists for the TOFU probe (which only ever issues the unauthenticated `/api/health` request), but the state could be *persisted*: if the toggle was on while the server's certificate actually passed OS trust, setup and edit both saved `allowSelfSigned=true` with no pin, and every later authenticated request — API key attached — silently accepted whatever certificate was presented. Fixed in three layers: (1) all commit paths now persist self-signed mode only together with a pinned fingerprint, so an OS-trusted server is saved as a plain fully-validated HTTPS site (matching what the code's own comment already claimed); (2) `TLSDelegate` now fails closed — an unpinned connection is only accepted when a TOFU capture handler is attached, i.e. during the explicit trust-prompt flows, and is cancelled otherwise; (3) `Site` decoding self-heals pre-0.3.2 rows in the bad state back to OS trust on load, so affected sites keep working against their OS-trusted servers instead of failing under the new closed behavior. Found while verifying an external (Grok) audit of 0.3.1, which had passed the TLS layer as "no UI bypass once pinned" — true, but the gap was in the not-yet-pinned state.
+
+### Fixed
+
+- **Editing a site now clears a stale Keychain fingerprint whenever the saved state has no pin** (previously only when the self-signed toggle was off), so a TOFU rerun that lands on an OS-trusted certificate no longer leaves the old pin behind in the Keychain.
+
+---
+
 ## [0.3.1] — 2026-06-30
 
 ### Fixed

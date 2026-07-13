@@ -273,7 +273,11 @@ struct SiteFormView: View {
             id: site.id,
             name: resolvedName,
             baseURL: url,
-            allowSelfSigned: allowSelfSigned,
+            // Persist self-signed mode only when a fingerprint is actually
+            // pinned. If the toggle was on but the server's cert passed OS
+            // trust during TOFU, saving allowSelfSigned=true with no pin
+            // would leave the site accepting any future certificate.
+            allowSelfSigned: pinnedFingerprint != nil,
             pinnedCertFingerprint: pinnedFingerprint,
             sortOrder: site.sortOrder,
             // Preserve the demo flag on edit so renaming a demo site
@@ -293,9 +297,11 @@ struct SiteFormView: View {
             }
             if let fp = pinnedFingerprint {
                 try KeychainStore.shared.saveCertFingerprint(fp, for: site.id)
-            } else if !allowSelfSigned {
-                // Dropping self-signed — clear any stale pin so the site
-                // doesn't carry an unused fingerprint around.
+            } else {
+                // No pin in the state we just persisted — clear any stale
+                // Keychain fingerprint (dropped self-signed, or TOFU found
+                // an OS-trusted cert) so the site doesn't carry an unused
+                // fingerprint around.
                 KeychainStore.shared.deleteCertFingerprint(for: site.id)
             }
         } catch {
@@ -375,7 +381,9 @@ struct SiteFormView: View {
         let sibling = Site(
             name: "\(site.name) – \(mypiSite.name)",
             baseURL: site.baseURL,
-            allowSelfSigned: site.allowSelfSigned,
+            // Mirror the parent's effective TLS state: self-signed only
+            // travels together with the pin it was trusted under.
+            allowSelfSigned: site.pinnedCertFingerprint != nil,
             pinnedCertFingerprint: site.pinnedCertFingerprint,
             isDemo: false,
             mypiSiteSlug: mypiSite.slug,

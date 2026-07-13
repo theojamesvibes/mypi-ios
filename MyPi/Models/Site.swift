@@ -62,13 +62,21 @@ struct Site: Identifiable, Codable, Hashable {
     /// the flag cleared. Any site pointing at the canonical demo host —
     /// `demo.mypi.invalid`, which can never resolve on the real internet
     /// (RFC 2606 reserves `.invalid`) — is forced back to demo on load.
+    ///
+    /// And self-heals pre-0.3.2 rows saved with `allowSelfSigned == true`
+    /// but no pinned fingerprint (possible when the toggle was on but the
+    /// server's cert passed OS trust during setup). `TLSDelegate` fails
+    /// closed for unpinned runtime clients since 0.3.2, which would break
+    /// such a site against its OS-trusted server — normalizing to OS trust
+    /// matches how the connection actually validated when it was added.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
         baseURL = try c.decode(URL.self, forKey: .baseURL)
-        allowSelfSigned = try c.decode(Bool.self, forKey: .allowSelfSigned)
         pinnedCertFingerprint = try c.decodeIfPresent(String.self, forKey: .pinnedCertFingerprint)
+        allowSelfSigned = try c.decode(Bool.self, forKey: .allowSelfSigned)
+            && pinnedCertFingerprint != nil
         sortOrder = try c.decode(Int.self, forKey: .sortOrder)
         let decodedIsDemo = try c.decodeIfPresent(Bool.self, forKey: .isDemo) ?? false
         isDemo = decodedIsDemo || baseURL.host()?.lowercased() == "demo.mypi.invalid"

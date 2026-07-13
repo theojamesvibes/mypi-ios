@@ -8,7 +8,12 @@ import Network
 /// Behaviour depends on the site configuration:
 /// - `allowSelfSigned == false` (default): defer to OS trust evaluation (full chain validation).
 /// - `allowSelfSigned == true, pinnedFingerprint != nil`: accept only the pinned certificate.
-/// - `allowSelfSigned == true, pinnedFingerprint == nil`: accept any certificate (TOFU pending).
+/// - `allowSelfSigned == true, pinnedFingerprint == nil`: TOFU pending — accept the
+///   certificate only when an `onUntrustedCertificate` handler is attached (an
+///   explicit TOFU probe, which only ever issues the unauthenticated `/api/health`
+///   request). With no handler attached this is a regular runtime client, so the
+///   challenge is cancelled rather than silently accepting an unverified
+///   certificate on a request that carries the API key.
 final class TLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let allowSelfSigned: Bool
     private let pinnedFingerprint: String?
@@ -57,9 +62,11 @@ final class TLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             } else {
                 completionHandler(.cancelAuthenticationChallenge, nil)
             }
-        } else {
-            onUntrustedCertificate?(fingerprint)
+        } else if let onUntrusted = onUntrustedCertificate {
+            onUntrusted(fingerprint)
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }
 

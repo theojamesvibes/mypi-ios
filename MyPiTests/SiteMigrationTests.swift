@@ -79,6 +79,47 @@ struct SiteMigrationTests {
         #expect(site.mypiSiteName == nil)
     }
 
+    @Test func selfSignedWithoutPinSelfHealsToOSTrust() throws {
+        // Pre-0.3.2 builds could persist allowSelfSigned=true with no pinned
+        // fingerprint: the toggle was on, but the server presented an
+        // OS-trusted cert during setup, so TOFU never captured a pin.
+        // TLSDelegate fails closed for unpinned runtime clients since 0.3.2,
+        // so load must normalize this state back to plain OS trust — which is
+        // how the connection actually validated when the site was added.
+        let json = """
+        {
+          "id": "55555555-5555-5555-5555-555555555555",
+          "name": "Toggle On, OS Trusted",
+          "baseURL": "https://pi.example.com",
+          "allowSelfSigned": true,
+          "sortOrder": 0,
+          "isDemo": false
+        }
+        """
+        let site = try JSONDecoder().decode(Site.self, from: Data(json.utf8))
+        #expect(site.allowSelfSigned == false)
+        #expect(site.pinnedCertFingerprint == nil)
+    }
+
+    @Test func selfSignedWithPinSurvivesDecode() throws {
+        // The healthy self-signed state — pinned via the TOFU trust sheet —
+        // must round-trip untouched by the unpinned-state self-heal.
+        let json = """
+        {
+          "id": "66666666-6666-6666-6666-666666666666",
+          "name": "Pinned",
+          "baseURL": "https://pi.internal.example.com",
+          "allowSelfSigned": true,
+          "pinnedCertFingerprint": "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
+          "sortOrder": 0,
+          "isDemo": false
+        }
+        """
+        let site = try JSONDecoder().decode(Site.self, from: Data(json.utf8))
+        #expect(site.allowSelfSigned == true)
+        #expect(site.pinnedCertFingerprint == "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12")
+    }
+
     @Test func mypiSlugFieldsRoundTrip() throws {
         // Once 0.2.0+ stamps slug/name onto a site, subsequent loads must
         // preserve them — this is what the 0.2.1 migration leaves behind
