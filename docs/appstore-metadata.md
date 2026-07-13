@@ -127,7 +127,13 @@ pi-hole,dns,network,monitoring,dashboard,adblock,homelab,selfhosted,privacy,piho
 
 Update per version. Newest at top; paste only the current version's block into the App Store Connect field.
 
-### 0.3.1 (current)
+### 0.3.3 (current)
+
+```
+• Hardened TLS handling for self-signed servers: a site is now saved in self-signed mode only together with its pinned certificate fingerprint, and unpinned connections outside the explicit trust prompt are refused. If your server's certificate validates normally, the site is stored as a regular fully-validated HTTPS connection.
+```
+
+### 0.3.1
 
 ```
 • Fixed the Top Blocked Domains panel on iPad so it lines up with the Top Permitted and Top Clients panels — it now stays top-aligned and full-height even when only a few domains are listed.

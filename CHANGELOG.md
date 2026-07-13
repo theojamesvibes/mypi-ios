@@ -8,6 +8,14 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.3.3] — 2026-07-13
+
+### Changed
+
+- **Modernized the certificate-chain API in `TLSDelegate`.** Replaced the deprecated `SecTrustGetCertificateAtIndex` with `SecTrustCopyCertificateChain` for extracting the leaf certificate during self-signed pin evaluation. No behavior change; clears the deprecation warning. This is the App Store submission build for the 0.3.2 security fix (0.3.2 itself was a repo-only release).
+
+---
+
 ## [0.3.2] — 2026-07-13
 
 ### Security

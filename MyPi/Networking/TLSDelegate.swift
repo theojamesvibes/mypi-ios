@@ -49,7 +49,8 @@ final class TLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
             return
         }
 
-        guard let leafCert = SecTrustGetCertificateAtIndex(serverTrust, 0) else {
+        guard let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate],
+              let leafCert = chain.first else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
