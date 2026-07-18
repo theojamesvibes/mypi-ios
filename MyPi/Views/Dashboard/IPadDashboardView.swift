@@ -38,14 +38,15 @@ struct IPadDashboardView: View {
                     HStack(alignment: .top, spacing: 16) {
                         if let history = vm.history, !history.buckets.isEmpty {
                             QueryActivityChart(
+                                vm: vm,
                                 history: history,
                                 range: vm.selectedRange,
                                 height: 180,
-                                cardHeight: 280
+                                cardHeight: 320
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        QueryTypesDonut(stats: summary.totals, cardHeight: 280)
+                        QueryTypesDonut(stats: summary.totals, cardHeight: 320)
                             .frame(width: 320)
                     }
                     .padding(.horizontal)
@@ -166,19 +167,14 @@ private struct TopColumn: View {
                 .foregroundStyle(color)
                 .padding()
             Divider()
+            let maxCount = items.prefix(10).map(\.1).max() ?? 0
             ForEach(Array(items.prefix(10).enumerated()), id: \.offset) { idx, item in
-                HStack {
-                    Text(item.0)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(item.1.formatted())
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 6)
+                TopItemRow(
+                    label: item.0,
+                    count: item.1,
+                    fraction: maxCount > 0 ? Double(item.1) / Double(maxCount) : 0,
+                    color: color
+                )
                 if idx < min(items.count, 10) - 1 {
                     Divider().padding(.leading)
                 }

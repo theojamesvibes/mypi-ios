@@ -58,19 +58,14 @@ private struct TopListSection: View {
 
             if expanded {
                 Divider()
+                let maxCount = items.prefix(10).map(\.1).max() ?? 0
                 ForEach(Array(items.prefix(10).enumerated()), id: \.offset) { idx, item in
-                    HStack {
-                        Text(item.0)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(item.1.formatted())
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
+                    TopItemRow(
+                        label: item.0,
+                        count: item.1,
+                        fraction: maxCount > 0 ? Double(item.1) / Double(maxCount) : 0,
+                        color: color
+                    )
                     if idx < min(items.count, 10) - 1 {
                         Divider().padding(.leading)
                     }
@@ -78,5 +73,40 @@ private struct TopListSection: View {
             }
         }
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Top-list row with a proportional tinted bar behind the text — reads as a
+/// horizontal bar chart at zero extra height. `fraction` is the item's count
+/// relative to the list's largest count (0…1). Shared by the iPhone sections
+/// and the iPad `TopColumn`s.
+struct TopItemRow: View {
+    let label: String
+    let count: Int
+    let fraction: Double
+    let color: Color
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .lineLimit(1)
+            Spacer()
+            Text(count.formatted())
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .padding(.vertical, 6)
+        // Behind the content, inside the card's horizontal padding, so the
+        // bar aligns with the text rather than bleeding to the card edge.
+        .background(alignment: .leading) {
+            GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(color.opacity(0.14))
+                    .frame(width: geo.size.width * min(1, max(0, fraction)))
+            }
+        }
+        .padding(.horizontal)
     }
 }

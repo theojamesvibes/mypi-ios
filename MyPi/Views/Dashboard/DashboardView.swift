@@ -48,9 +48,12 @@ struct DashboardView: View {
                     StatCardsSection(stats: summary.totals)
 
                     if let history = vm.history, !history.buckets.isEmpty {
-                        QueryActivityChart(history: history, range: vm.selectedRange, height: 80)
+                        QueryActivityChart(vm: vm, history: history, range: vm.selectedRange, height: 160)
                             .padding(.horizontal)
                     }
+
+                    QueryTypesDonut(stats: summary.totals)
+                        .padding(.horizontal)
 
                     if let top = vm.top {
                         TopListsView(top: top)

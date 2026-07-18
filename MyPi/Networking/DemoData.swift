@@ -48,9 +48,35 @@ enum DemoData {
             queriesCached: Int(4_128 * scale),
             queriesForwarded: Int(5_562 * scale)
         )
-        let instances: [InstanceSummary] = [
+        return AggregatedSummary(totals: totals, instances: instances(total: total, blocked: blocked))
+    }
+
+    // MARK: - Instances
+
+    /// Ids of the two synthetic Pi-hole devices. Two rather than one so the
+    /// Query Log's Device chip and the dashboard's By Device chart mode are
+    /// both demoable.
+    static let primaryInstanceId = "demo-primary"
+    static let secondaryInstanceId = "demo-bedroom"
+    static var validInstanceIds: Set<String> { [primaryInstanceId, secondaryInstanceId] }
+
+    /// Rough share of traffic the primary device carries (the rest is the
+    /// bedroom device).
+    private static let primaryShare = 0.7
+
+    /// The synthetic Pi-hole devices. Also backs `/api/instances` for the
+    /// Query Log's Device filter.
+    static func instances(total: Int = 12_847, blocked: Int = 2_341) -> [InstanceSummary] {
+        let primaryTotal = Int(Double(total) * primaryShare)
+        let primaryBlocked = Int(Double(blocked) * primaryShare)
+        let secondaryTotal = total - primaryTotal
+        let secondaryBlocked = blocked - primaryBlocked
+        func pct(_ b: Int, _ t: Int) -> Double {
+            t > 0 ? Double(b) / Double(t) * 100 : 0
+        }
+        return [
             InstanceSummary(
-                id: "demo-primary",
+                id: primaryInstanceId,
                 name: "Pi-hole (Demo)",
                 url: "https://demo.mypi.invalid",
                 color: "#2563eb",
@@ -58,19 +84,36 @@ enum DemoData {
                 isActive: true,
                 lastSeenAt: Date(),
                 status: "online",
-                dnsQueriesToday: total,
-                queriesBlocked: blocked,
-                percentBlocked: percent,
+                dnsQueriesToday: primaryTotal,
+                queriesBlocked: primaryBlocked,
+                percentBlocked: pct(primaryBlocked, primaryTotal),
                 uniqueClients: 12,
                 domainsOnBlocklist: 746_821
-            )
+            ),
+            InstanceSummary(
+                id: secondaryInstanceId,
+                name: "Bedroom Pi-hole",
+                url: "https://demo-bedroom.mypi.invalid",
+                color: "#f59e0b",
+                isMaster: false,
+                isActive: true,
+                lastSeenAt: Date(),
+                status: "online",
+                dnsQueriesToday: secondaryTotal,
+                queriesBlocked: secondaryBlocked,
+                percentBlocked: pct(secondaryBlocked, secondaryTotal),
+                uniqueClients: 5,
+                domainsOnBlocklist: 746_821
+            ),
         ]
-        return AggregatedSummary(totals: totals, instances: instances)
     }
 
     // MARK: - History
 
-    static func history(range: TimeRange) -> HistoryResponse {
+    static func history(range: TimeRange, instanceId: String? = nil) -> HistoryResponse {
+        if let inst = instanceId, !validInstanceIds.contains(inst) {
+            return HistoryResponse(buckets: [], instanceId: inst)
+        }
         let now = Date()
         let bucketCount: Int
         let step: TimeInterval
@@ -86,15 +129,36 @@ enum DemoData {
 
         // Smooth-ish synthetic shape: rising in the morning, peak afternoon,
         // tapering in the evening. Seeded-ish so the chart doesn't flicker
-        // frantically when the VM refreshes.
+        // frantically when the VM refreshes. The blocked ratio drifts with a
+        // second sine so the Blocked % chart mode has an actual shape.
+        // Per-device series are carved out of each total bucket with a
+        // time-varying weight (primary daytime-heavy, bedroom evening-heavy),
+        // so the two devices always sum exactly to the total series.
         let buckets: [HistoryBucket] = (0..<bucketCount).map { idx in
             let t = now.addingTimeInterval(-Double(bucketCount - idx) * step)
             let phase = Double(idx) / Double(bucketCount) * .pi
             let queries = Int(140 + sin(phase) * 80 + Double((idx * 13) % 23))
-            let blocked = Int(Double(queries) * 0.18)
-            return HistoryBucket(timestamp: t, queries: queries, blocked: blocked)
+            let blockedRatio = 0.18 + 0.06 * sin(phase * 2)
+            let blocked = Int(Double(queries) * blockedRatio)
+
+            switch instanceId {
+            case nil:
+                return HistoryBucket(timestamp: t, queries: queries, blocked: blocked)
+            default:
+                let weight = primaryShare + 0.12 * sin(phase * 1.5 + 0.8)
+                let primaryQ = min(queries, Int((Double(queries) * weight).rounded()))
+                let primaryB = min(primaryQ, Int((Double(blocked) * weight).rounded()))
+                if instanceId == primaryInstanceId {
+                    return HistoryBucket(timestamp: t, queries: primaryQ, blocked: primaryB)
+                }
+                return HistoryBucket(
+                    timestamp: t,
+                    queries: queries - primaryQ,
+                    blocked: min(queries - primaryQ, blocked - primaryB)
+                )
+            }
         }
-        return HistoryResponse(buckets: buckets, instanceId: "demo-primary")
+        return HistoryResponse(buckets: buckets, instanceId: instanceId)
     }
 
     // MARK: - Top
@@ -149,14 +213,20 @@ enum DemoData {
 
     // MARK: - Query log
 
-    static func queries(page: Int, pageSize: Int, range: TimeRange, filter: QueryFilter, domain: String?) -> QueryPage {
+    static func queries(page: Int, pageSize: Int, range: TimeRange, filter: QueryFilter, domain: String?, instanceId: String? = nil) -> QueryPage {
+        // A filter for anything other than a known demo device matches nothing.
+        if let inst = instanceId, !validInstanceIds.contains(inst) {
+            return QueryPage(items: [], total: 0, page: page, pageSize: pageSize)
+        }
         // Only page 1 has content — pagination in demo mode just stops.
-        let total = page == 1 ? 120 : 0
-        let items = page == 1 ? syntheticQueries(count: min(pageSize, total), filter: filter) : []
-        return QueryPage(items: items, total: total, page: page, pageSize: pageSize)
+        let all = page == 1 ? syntheticQueries(count: 120, filter: filter) : []
+        let matching = instanceId == nil ? all : all.filter { $0.instanceId == instanceId }
+        let items = Array(matching.prefix(pageSize))
+        return QueryPage(items: items, total: matching.count, page: page, pageSize: pageSize)
     }
 
-    static func clients(range: TimeRange) -> [ClientSummary] {
+    static func clients(range: TimeRange, instanceId: String? = nil) -> [ClientSummary] {
+        if let inst = instanceId, !validInstanceIds.contains(inst) { return [] }
         let rows: [(String, String, Int, Int, TimeInterval)] = [
             ("10.0.1.50", "Living-Room-TV",  4_612, 842,  60),
             ("10.0.1.20", "iPhone-15-Pro",   3_188, 512, 120),
@@ -193,7 +263,8 @@ enum DemoData {
             completedAt: now.addingTimeInterval(-60),
             master: "Pi-hole (Demo)",
             results: [
-                InstanceSyncResult(name: "Pi-hole (Demo)", status: "success", error: nil)
+                InstanceSyncResult(name: "Pi-hole (Demo)", status: "success", error: nil),
+                InstanceSyncResult(name: "Bedroom Pi-hole", status: "success", error: nil),
             ],
             error: nil
         )
@@ -249,6 +320,9 @@ enum DemoData {
                     return rawStatus
                 }
             }()
+            // Roughly a third of the traffic comes via the bedroom device so
+            // the Device filter visibly changes the list in demo mode.
+            let isBedroom = i % 3 == 2
             out.append(QueryEntry(
                 id: "demo-\(i)",
                 timestamp: now.addingTimeInterval(-Double(i) * 17),
@@ -256,8 +330,8 @@ enum DemoData {
                 clientIp: client.0,
                 clientName: client.1,
                 status: status,
-                instanceId: "demo-primary",
-                instanceName: "Pi-hole (Demo)"
+                instanceId: isBedroom ? secondaryInstanceId : primaryInstanceId,
+                instanceName: isBedroom ? "Bedroom Pi-hole" : "Pi-hole (Demo)"
             ))
         }
         return out

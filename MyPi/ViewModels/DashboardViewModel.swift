@@ -1,6 +1,28 @@
 import Foundation
 import Observation
 
+/// Which series the dashboard's Query Activity card renders.
+enum ActivityChartMode: String, CaseIterable, Identifiable {
+    case all, blockedPercent, byDevice
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .blockedPercent: return "Blocked %"
+        case .byDevice: return "By Device"
+        }
+    }
+}
+
+/// One Pi-hole device's history series, paired with its instance metadata
+/// (name + server-assigned color) for the By Device stacked chart.
+struct InstanceHistory: Identifiable {
+    let instance: InstanceSummary
+    let history: HistoryResponse
+    var id: String { instance.id }
+}
+
 @Observable
 final class DashboardViewModel {
     // MARK: - State
@@ -19,8 +41,34 @@ final class DashboardViewModel {
     var serverVersion: String?
 
     var selectedRange: TimeRange = .today {
-        didSet { Task { [weak self] in await self?.refresh() } }
+        didSet {
+            // Old-range per-device series would render against the new
+            // x-domain; drop them and let the refresh refetch.
+            instanceHistories = []
+            Task { [weak self] in await self?.refresh() }
+        }
     }
+
+    /// Query Activity card mode. Lives here (not view @State) because
+    /// By Device drives fetching: entering it triggers the per-instance
+    /// history fan-out, and every poll refreshes it only while active.
+    /// Persisted app-wide so the preferred mode survives relaunch (and the
+    /// argument domain lets tooling launch straight into a mode, e.g.
+    /// `simctl launch ... -activityChartMode blockedPercent`).
+    var activityMode: ActivityChartMode {
+        didSet {
+            UserDefaults.standard.set(activityMode.rawValue, forKey: Self.activityModeKey)
+            guard activityMode == .byDevice, instanceHistories.isEmpty else { return }
+            Task { [weak self] in await self?.fetchInstanceHistories() }
+        }
+    }
+
+    static let activityModeKey = "activityChartMode"
+
+    /// Per-device history series for the By Device mode. Populated on
+    /// demand only — empty whenever the mode isn't active, so the frequent
+    /// dashboard poll doesn't pay N extra requests nobody is looking at.
+    var instanceHistories: [InstanceHistory] = []
 
     // MARK: - Private
 
@@ -80,6 +128,8 @@ final class DashboardViewModel {
     init(client: APIClient, appState: AppState? = nil) {
         self.client = client
         self.appState = appState
+        self.activityMode = UserDefaults.standard.string(forKey: Self.activityModeKey)
+            .flatMap(ActivityChartMode.init(rawValue:)) ?? .all
     }
 
     deinit {
@@ -195,6 +245,18 @@ final class DashboardViewModel {
             loadState = .loaded
             consecutiveFailures = 0
 
+            // Keep the By Device series in step with the fresh totals — but
+            // only while the user is actually in that mode. If the site no
+            // longer has multiple devices (e.g. after a site switch), fall
+            // back to All rather than rendering an empty breakdown.
+            if activityMode == .byDevice {
+                if s.instances.filter(\.isActive).count > 1 {
+                    await fetchInstanceHistories()
+                } else {
+                    activityMode = .all
+                }
+            }
+
             DiskCache.shared.write(s, key: cacheKeyPrefix + "-summary")
             DiskCache.shared.write(h, key: cacheKeyPrefix + "-history")
             DiskCache.shared.write(t, key: cacheKeyPrefix + "-top")
@@ -229,6 +291,29 @@ final class DashboardViewModel {
                 appState.connectionStates[site.id] = Self.categorize(error)
             }
         }
+    }
+
+    /// Fetch one history series per active Pi-hole device for the By Device
+    /// chart mode. Sequential rather than a task group — N is small (a
+    /// handful of devices) and the ordered loop keeps instance order stable
+    /// without Sendable gymnastics. Per-device failures are skipped: a
+    /// partial breakdown beats none, and total-history remains the fallback.
+    /// Not disk-cached — this is on-demand data behind an explicit toggle.
+    private func fetchInstanceHistories() async {
+        guard activityMode == .byDevice,
+              let instances = summary?.instances.filter(\.isActive),
+              instances.count > 1 else { return }
+        let range = selectedRange
+        var results: [InstanceHistory] = []
+        for instance in instances {
+            if let h = try? await client.history(range: range, instanceId: instance.id) {
+                results.append(InstanceHistory(instance: instance, history: h))
+            }
+        }
+        // The user may have switched range or mode while we were fetching —
+        // don't publish series that no longer match the chart's domain.
+        guard activityMode == .byDevice, selectedRange == range else { return }
+        instanceHistories = results
     }
 
     /// Map a caught fetch error to the equivalent `SiteConnectionState`,

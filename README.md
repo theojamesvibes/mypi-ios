@@ -4,9 +4,9 @@ Native iOS/iPadOS companion app for [MyPi](https://github.com/theojamesvibes/myp
 
 ## Features
 
-- Dashboard with live stat cards (tap **Blocked** or **Unique Clients** to drill into per-domain / per-client detail), 100% stacked query-composition chart, top domains/clients, and per-instance systems table
+- Dashboard with live stat cards (tap **Blocked** or **Unique Clients** to drill into per-domain / per-client detail), an interactive Query Activity chart with three modes — **All** (permitted vs blocked bars), **Blocked %** (trend line), and **By Device** (stacked per-Pi-hole, in each instance's server-assigned color) — with drag-to-scrub bucket details and readable sparse axes, a Query Types donut (iPhone and iPad), top domains/clients with proportional in-row bars, and a per-instance systems table
 - Shared time-range picker on Dashboard and Query Log: **15m, 1h, Today, 24h, 48h, 7d, 30d** — mirrors the MyPi web dashboard, defaults to **Today**
-- Query log with filtering (all / permitted / blocked / cached) and an in-app legend for what each status icon means; the search bar filters locally across domain, client IP, client name, status, and instance name
+- Query log with filtering (all / permitted / blocked / cached) and, on servers with more than one Pi-hole, a Device chip to filter by a specific instance (same as the web Query Log's dropdown); an in-app legend explains each status icon, and the search bar filters locally across domain, client IP, client name, status, and instance name
 - Multi-site support — manage multiple MyPi servers (e.g. home + office) with per-site connection indicators (green = reachable and authenticated, red = not). Switching sites is instant — Dashboard and Query Log view models are cached per site so the prior state is still on screen
 - Always-visible "Updated X ago" label at the top of Dashboard and Query Log; a banner appears when the active site is unreachable, showing the retry cadence
 - Swipe left/right (iPhone and iPad) to move between Dashboard / Query Log / Settings — interactive page slide with tap-to-switch on the bottom tab bar

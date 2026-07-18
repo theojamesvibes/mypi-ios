@@ -20,6 +20,21 @@ final class QueryLogViewModel {
         didSet { Task { await reset() } }
     }
 
+    /// Pi-hole devices on the server, for the Device filter chip (mirrors the
+    /// web Query Log's instance dropdown). Empty until `loadInitial` fetches
+    /// them; the chip stays hidden with fewer than two devices.
+    var instances: [InstanceSummary] = []
+
+    /// Server-side `instance_id` filter; nil means all devices.
+    var selectedInstanceId: String? {
+        didSet { Task { await reset() } }
+    }
+
+    var selectedInstanceName: String? {
+        guard let id = selectedInstanceId else { return nil }
+        return instances.first(where: { $0.id == id })?.name
+    }
+
     var isClientsMode: Bool { filter.isClientsMode }
 
     var site: Site { client.site }
@@ -62,6 +77,12 @@ final class QueryLogViewModel {
         "querylog-\(client.site.id.uuidString)"
     }
 
+    /// Cache-key fragment for the device filter. Empty when no device is
+    /// selected so pre-existing (unfiltered) cache entries stay valid.
+    private var instanceKeySuffix: String {
+        selectedInstanceId.map { "-inst-\($0)" } ?? ""
+    }
+
     init(client: APIClient) {
         self.client = client
     }
@@ -70,7 +91,17 @@ final class QueryLogViewModel {
 
     func loadInitial() async {
         hydrateFromCacheIfNeeded()
+        async let deviceList: Void = loadInstances()
         await reset()
+        await deviceList
+    }
+
+    /// Fetch the device list for the Device chip. Failure is non-fatal —
+    /// the chip simply stays hidden (e.g. legacy servers without
+    /// `/api/instances`, or a site that's currently unreachable).
+    private func loadInstances() async {
+        guard instances.isEmpty else { return }
+        instances = (try? await client.instances()) ?? []
     }
 
     /// One-shot disk-cache hydration for the first page (per filter/range).
@@ -82,7 +113,7 @@ final class QueryLogViewModel {
         if isClientsMode {
             if clients.isEmpty,
                let cached = DiskCache.shared.read(
-                   key: cacheKeyPrefix + "-clients-\(selectedRange.id)",
+                   key: cacheKeyPrefix + "-clients-\(selectedRange.id)" + instanceKeySuffix,
                    as: [ClientSummary].self
                ) {
                 clients = cached.data
@@ -91,7 +122,7 @@ final class QueryLogViewModel {
         } else {
             if queries.isEmpty,
                let cached = DiskCache.shared.read(
-                   key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)",
+                   key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)" + instanceKeySuffix,
                    as: [QueryEntry].self
                ) {
                 queries = cached.data
@@ -138,7 +169,8 @@ final class QueryLogViewModel {
                 pageSize: pageSize,
                 range: selectedRange,
                 filter: filter,
-                domain: nil
+                domain: nil,
+                instanceId: selectedInstanceId
             )
             if appending {
                 queries.append(contentsOf: result.items)
@@ -152,7 +184,7 @@ final class QueryLogViewModel {
             if page == 1 {
                 DiskCache.shared.write(
                     queries,
-                    key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)"
+                    key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)" + instanceKeySuffix
                 )
             }
         } catch {
@@ -170,13 +202,13 @@ final class QueryLogViewModel {
         isLoading = true
         errorMessage = nil
         do {
-            clients = try await client.clients(range: selectedRange)
+            clients = try await client.clients(range: selectedRange, instanceId: selectedInstanceId)
             queries = []
             hasMore = false
             lastUpdated = Date()
             DiskCache.shared.write(
                 clients,
-                key: cacheKeyPrefix + "-clients-\(selectedRange.id)"
+                key: cacheKeyPrefix + "-clients-\(selectedRange.id)" + instanceKeySuffix
             )
         } catch {
             if clients.isEmpty {

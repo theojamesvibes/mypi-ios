@@ -137,9 +137,11 @@ final class APIClient {
         return try await get("/api/stats/summary?\(range.queryString())")
     }
 
-    func history(range: TimeRange) async throws -> HistoryResponse {
-        if site.isDemo { return DemoData.history(range: range) }
-        return try await get("/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)")
+    func history(range: TimeRange, instanceId: String? = nil) async throws -> HistoryResponse {
+        if site.isDemo { return DemoData.history(range: range, instanceId: instanceId) }
+        var path = "/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)"
+        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
+        return try await get(path)
     }
 
     func top(range: TimeRange, limit: Int = 10) async throws -> TopStatsResponse {
@@ -147,9 +149,9 @@ final class APIClient {
         return try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
     }
 
-    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all, domain: String? = nil) async throws -> QueryPage {
+    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all, domain: String? = nil, instanceId: String? = nil) async throws -> QueryPage {
         if site.isDemo {
-            return DemoData.queries(page: page, pageSize: pageSize, range: range, filter: filter, domain: domain)
+            return DemoData.queries(page: page, pageSize: pageSize, range: range, filter: filter, domain: domain, instanceId: instanceId)
         }
         var path = "/api/queries?page=\(page)&page_size=\(pageSize)&\(range.queryString())"
         if let q = filter.queryParam { path += "&\(q)" }
@@ -157,13 +159,24 @@ final class APIClient {
            let encoded = d.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
             path += "&domain=\(encoded)"
         }
+        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
         return try await get(path)
     }
 
     /// Aggregated per-client stats, grouped server-side. Used by the Unique Clients drill-down.
-    func clients(range: TimeRange) async throws -> [ClientSummary] {
-        if site.isDemo { return DemoData.clients(range: range) }
-        return try await get("/api/queries/clients?\(range.queryString())")
+    func clients(range: TimeRange, instanceId: String? = nil) async throws -> [ClientSummary] {
+        if site.isDemo { return DemoData.clients(range: range, instanceId: instanceId) }
+        var path = "/api/queries/clients?\(range.queryString())"
+        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
+        return try await get(path)
+    }
+
+    /// Active Pi-hole instances (devices) on the server. Backs the Device
+    /// filter on the Query Log — same source as the web UI's dropdown.
+    /// The response is a superset of `InstanceSummary`, so it decodes as-is.
+    func instances() async throws -> [InstanceSummary] {
+        if site.isDemo { return DemoData.instances() }
+        return try await get("/api/instances")
     }
 
     /// Global sync state — the timestamp of the last query-log sync run,

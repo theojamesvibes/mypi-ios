@@ -61,10 +61,17 @@ final class AppState {
             // the user just backgrounds and returns, `AppState` is already
             // alive and `init` doesn't run again, so demo mode persists
             // across background/foreground cycles as expected.
-            for demo in loaded where demo.isDemo {
-                SiteStore.shared.delete(id: demo.id)
+            // Dev/verification hook: launching with `-mypi-keep-demo`
+            // (e.g. `simctl launch ... -mypi-keep-demo`) suppresses the
+            // wipe so a pre-seeded demo site survives a cold launch and
+            // automated tooling can screenshot demo-mode screens headlessly.
+            let keepDemo = ProcessInfo.processInfo.arguments.contains("-mypi-keep-demo")
+            if !keepDemo {
+                for demo in loaded where demo.isDemo {
+                    SiteStore.shared.delete(id: demo.id)
+                }
             }
-            sites = loaded.filter { !$0.isDemo }
+            sites = keepDemo ? loaded : loaded.filter { !$0.isDemo }
             if sites.isEmpty {
                 showSetupSheet = true
             } else {

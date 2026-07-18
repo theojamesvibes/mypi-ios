@@ -51,6 +51,14 @@ struct APIClientRoutingTests {
         #expect(c.resolvedPath("/api/sites") == "/api/sites")
     }
 
+    @Test func slugRewritesInstancesPath() {
+        // The Device filter's source list is site-scoped on multi-site
+        // servers (`/api/sites/{slug}/instances` exists server-side), so it
+        // must NOT be in the server-global allowlist.
+        let c = client(slug: "cabin")
+        #expect(c.resolvedPath("/api/instances") == "/api/sites/cabin/instances")
+    }
+
     @Test func slugDoesNotRewriteNonAPIPaths() {
         // Belt-and-braces — only `/api/` paths get the prefix treatment.
         let c = client(slug: "cabin")

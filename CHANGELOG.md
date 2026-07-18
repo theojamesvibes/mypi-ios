@@ -8,6 +8,18 @@ All notable changes to MyPi iOS are documented here.
 
 ---
 
+## [0.4.0] — 2026-07-18
+
+### Added
+
+- **Interactive Query Activity chart with three modes.** The dashboard's activity chart doubled in height on iPhone (80 → 160 pt), gained readable sparse axes (4 time labels, 3 compact count labels), and drag/tap scrubbing with a snap-to-bucket annotation showing the bucket's time, permitted/blocked counts, and blocked share. A segmented control switches between **All** (the existing permitted/blocked stack), **Blocked %** (a derived trend line of the blocked share per bucket — no extra requests; idle buckets are skipped rather than plotted as fake 0%), and **By Device** (bars stacked per Pi-hole instance in each device's server-assigned color, shown only on servers with more than one device). Per-device series are fetched on demand via `instance_id` on `/api/stats/history` — one call per device, only while the mode is active, refreshed with each poll and dropped when the user leaves the mode. The selected mode persists across launches. Marks are clipped to the plot area (previously edge buckets could draw outside the chart).
+- **Query Types donut on iPhone.** Previously iPad-only; now shown between the activity chart and the top lists.
+- **Top lists read as bar charts.** Top Blocked / Top Permitted / Top Clients rows draw a proportional tinted bar behind each row (relative to the list's largest count), on both iPhone and iPad, so relative magnitude is visible at a glance without extra vertical space.
+- **Second demo device.** Demo mode now simulates two Pi-holes ("Pi-hole (Demo)" + "Bedroom Pi-hole") with per-device curves that sum exactly to the total and a time-varying blocked ratio, so By Device, Blocked %, and the Query Log Device chip are all demoable. Launch-argument hooks (`-mypi-keep-demo`, `-activityChartMode <mode>`) allow automated tooling to screenshot demo screens headlessly.
+- **Query Log can now filter by a specific Pi-hole device**, matching the instance dropdown on the MyPi web Query Log. A new "Device" chip (shown when the server has more than one Pi-hole) lists the active instances from `/api/instances` and passes `instance_id` to `/api/queries` and `/api/queries/clients`, so both the query list and the Unique Clients drill-down are filtered server-side. Works with multi-site routing (`/api/sites/{slug}/instances`) and degrades gracefully on servers without the endpoint (the chip just stays hidden). Cached pages are keyed per-device; the filter-chip row now scrolls horizontally so a long device name can't crowd out the other chips.
+
+---
+
 ## [0.3.3] — 2026-07-13
 
 ### Changed
