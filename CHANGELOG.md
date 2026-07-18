@@ -6,6 +6,10 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Two more headless-screenshot launch-argument hooks for automated App Store capture: `-mypi-initial-tab querylog|settings` (open on a specific tab) and `-mypi-scroll-to chart|donut|toplists` (scroll the iPhone dashboard to a below-the-fold card). No effect without the arguments.
+
 ---
 
 ## [0.4.0] — 2026-07-18

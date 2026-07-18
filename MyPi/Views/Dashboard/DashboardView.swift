@@ -17,6 +17,22 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var phoneBody: some View {
+        ScrollViewReader { proxy in
+            phoneScroll
+                .task {
+                    // Dev/screenshot hook: `-mypi-scroll-to chart|donut|toplists`
+                    // scrolls the anchor to the top after the demo data has
+                    // rendered, so tooling can capture below-the-fold cards
+                    // headlessly (the simulator can't be scrolled via CLI).
+                    guard let anchor = UserDefaults.standard.string(forKey: "mypi-scroll-to") else { return }
+                    try? await Task.sleep(for: .seconds(2.5))
+                    withAnimation { proxy.scrollTo(anchor, anchor: .top) }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var phoneScroll: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
                 if vm.site.isDemo {
@@ -50,13 +66,16 @@ struct DashboardView: View {
                     if let history = vm.history, !history.buckets.isEmpty {
                         QueryActivityChart(vm: vm, history: history, range: vm.selectedRange, height: 160)
                             .padding(.horizontal)
+                            .id("chart")
                     }
 
                     QueryTypesDonut(stats: summary.totals)
                         .padding(.horizontal)
+                        .id("donut")
 
                     if let top = vm.top {
                         TopListsView(top: top)
+                            .id("toplists")
                     }
 
                     SystemsTableView(instances: summary.instances, syncStatus: vm.syncStatus)

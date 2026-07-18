@@ -144,7 +144,16 @@ private enum MainTab: Int, Hashable, CaseIterable {
 /// iPad the same swipe behavior as iPhone with no sidebar to fight.
 private struct MainTabView: View {
     @Environment(AppState.self) private var appState
-    @State private var selected: MainTab = .dashboard
+    /// Dev/screenshot hook: `-mypi-initial-tab querylog|settings` (launch
+    /// args land in the UserDefaults argument domain) opens on that tab so
+    /// automated tooling can capture non-dashboard screens headlessly.
+    @State private var selected: MainTab = {
+        switch UserDefaults.standard.string(forKey: "mypi-initial-tab") {
+        case "querylog": return .queryLog
+        case "settings": return .settings
+        default: return .dashboard
+        }
+    }()
 
     var body: some View {
         PagingTabContainer(
