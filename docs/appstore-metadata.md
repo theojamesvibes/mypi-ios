@@ -127,7 +127,16 @@ pi-hole,dns,network,monitoring,dashboard,adblock,homelab,selfhosted,privacy,piho
 
 Update per version. Newest at top; paste only the current version's block into the App Store Connect field.
 
-### 0.3.3 (current)
+### 0.4.0 (current)
+
+```
+• New interactive Query Activity chart: drag to inspect any time bucket, with readable time and count axes. Switch between All traffic, Blocked % over time, and a By Device view that stacks each Pi-hole's traffic in its own color.
+• Query Types breakdown donut now appears on iPhone (previously iPad only).
+• Top Blocked, Top Permitted, and Top Clients lists now show proportional bars behind each row so you can compare at a glance.
+• Query Log: filter by a specific Pi-hole device with the new Device chip (on servers with more than one Pi-hole).
+```
+
+### 0.3.3
 
 ```
 • Hardened TLS handling for self-signed servers: a site is now saved in self-signed mode only together with its pinned certificate fingerprint, and unpinned connections outside the explicit trust prompt are refused. If your server's certificate validates normally, the site is stored as a regular fully-validated HTTPS connection.
