@@ -29,7 +29,13 @@ struct QueryLegendSheet: View {
             icon: "shield.fill",
             color: .red,
             title: "Blocked",
-            description: "Matched a blocklist (gravity, regex, or blacklist) and was blocked."
+            description: "Matched an adlist, a regex rule or the deny list, or was blocked by the upstream resolver."
+        ),
+        .init(
+            icon: "questionmark.circle",
+            color: .secondary,
+            title: "Other",
+            description: "No final answer was recorded — for example the query was still in progress."
         ),
     ]
 
@@ -53,7 +59,7 @@ struct QueryLegendSheet: View {
                         .padding(.vertical, 4)
                     }
                 } footer: {
-                    Text("Status values are reported by Pi-hole v6. \"Blocked\" covers GRAVITY, REGEX, BLACKLIST and their CNAME variants.")
+                    Text("Status values are reported by Pi-hole v6. Tap any query to see its exact status, record type, reply and client.")
                 }
             }
             .navigationTitle("Legend")

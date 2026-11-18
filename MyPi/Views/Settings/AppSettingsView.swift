@@ -226,11 +226,9 @@ struct AppSettingsView: View {
             isDemo: site.isDemo
         )
         let client = APIClient(site: draft)
-        var captured: String?
-        client.onUntrustedCertificate = { fp in captured = fp }
-
+        let captured: String?
         do {
-            _ = try await client.health()
+            captured = try await client.probeCertificateFingerprint()
         } catch {
             rePinError = "Couldn't reach the server: \(ErrorMessage.userFacing(error))"
             return

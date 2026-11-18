@@ -2,6 +2,8 @@ import Foundation
 import Observation
 
 /// Top-level application state shared across the view hierarchy via the environment.
+/// Main-actor isolated — it's UI state, read by SwiftUI on every render.
+@MainActor
 @Observable
 final class AppState {
     // MARK: - Sites
@@ -148,7 +150,6 @@ final class AppState {
     /// Probe a site's connectivity and update `connectionStates[site.id]`.
     /// Runs health (unauthenticated) then summary (authenticated) to distinguish
     /// offline / TLS / unauthorized / connected.
-    @MainActor
     func probe(site: Site) async {
         // Demo sites never hit the network, so skip the connectivity guard —
         // otherwise a device going offline would park a demo site in
@@ -207,7 +208,6 @@ final class AppState {
     /// If the network isn't up yet, we wait briefly for `NetworkMonitor`
     /// (which defaults to false post-0.1.4) to flip; if that times out we
     /// just return and the migration retries on the next launch.
-    @MainActor
     private func migrateLegacyNilSlugs() async {
         // Wait up to ~2 s for the path monitor's first callback. It
         // typically settles in under 100 ms, but fresh installs can have

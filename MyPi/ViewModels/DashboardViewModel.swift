@@ -23,6 +23,9 @@ struct InstanceHistory: Identifiable {
     var id: String { instance.id }
 }
 
+/// Main-actor isolated: SwiftUI reads this state while rendering, so it must
+/// only be mutated on the main thread. Requests still run off it in `APIClient`.
+@MainActor
 @Observable
 final class DashboardViewModel {
     // MARK: - State
@@ -132,10 +135,9 @@ final class DashboardViewModel {
             .flatMap(ActivityChartMode.init(rawValue:)) ?? .all
     }
 
-    deinit {
-        pollTask?.cancel()
-        graceTask?.cancel()
-    }
+    // No `deinit` cancellation: both tasks hold `self` weakly, so they end on
+    // their own once the view model is released, and `stop()` cancels them
+    // whenever the dashboard leaves the screen or the site is edited/removed.
 
     // MARK: - Public
 
@@ -160,7 +162,7 @@ final class DashboardViewModel {
     private func beginStartupGrace() {
         graceTask?.cancel()
         isWithinStartupGrace = true
-        graceTask = Task { @MainActor [weak self] in
+        graceTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.startupGraceSeconds))
             guard !Task.isCancelled else { return }
             self?.isWithinStartupGrace = false
@@ -217,6 +219,9 @@ final class DashboardViewModel {
            Date().timeIntervalSince(last) < minFetchInterval {
             return
         }
+        // A range change while this is in flight starts its own fetch; this
+        // one must not publish (or cache) old-range data over it.
+        let range = selectedRange
         loadState = .loading
         do {
             // Re-fetch /api/health every cycle so Settings reflects the live
@@ -229,11 +234,12 @@ final class DashboardViewModel {
                 }
             }
 
-            async let summaryTask = client.summary(range: selectedRange)
-            async let historyTask = client.history(range: selectedRange)
-            async let topTask = client.top(range: selectedRange)
+            async let summaryTask = client.summary(range: range)
+            async let historyTask = client.history(range: range)
+            async let topTask = client.top(range: range)
 
             let (s, h, t) = try await (summaryTask, historyTask, topTask)
+            guard range == selectedRange else { return }
             summary = s
             history = h
             top = t

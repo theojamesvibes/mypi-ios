@@ -17,7 +17,7 @@ MyPi Companion is an iOS/iPadOS client for [MyPi](https://github.com/theojamesvi
 - API keys you enter for each configured MyPi server.
 - SHA-256 fingerprints of TLS certificates you've chosen to pin for self-signed servers.
 
-**Caches directory** (`~/Library/Caches/net.myssdomain.mypi/`, standard iOS file protection):
+**Caches directory** (`~/Library/Caches/net.myssdomain.mypi/`, complete file protection — encrypted while the device is locked):
 
 - The most recent Dashboard response (summary, history, top-N, sync status) for each configured site.
 - The first page of Query Log results for each site/filter/time-range combination.

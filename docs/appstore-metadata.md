@@ -127,7 +127,18 @@ pi-hole,dns,network,monitoring,dashboard,adblock,homelab,selfhosted,privacy,piho
 
 Update per version. Newest at top; paste only the current version's block into the App Store Connect field.
 
-### 0.4.0 (current)
+### 0.5.0 (current)
+
+```
+• Tap any query in the Query Log to see the full detail: exact time, record type, Pi-hole status, reply type and time, the client's name and IP, and which Pi-hole answered — with plain-English explanations.
+• See whether a domain is on your allow or deny list and, for blocked queries, which adlist blocked it.
+• Drill down from any query to everything for that domain or from that client. Tap a client in Unique Clients to see its queries.
+• The Query Log now shows a result count, record types, and dates for older queries.
+• Reliability: fixed cases where changing filters quickly could show the wrong results, where a failed "load more" skipped queries, and where one incomplete query could empty the list.
+• Security hardening for cached data and request handling.
+```
+
+### 0.4.0
 
 ```
 • New interactive Query Activity chart: drag to inspect any time bucket, with readable time and count axes. Switch between All traffic, Blocked % over time, and a By Device view that stacks each Pi-hole's traffic in its own color.

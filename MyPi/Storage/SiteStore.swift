@@ -15,7 +15,7 @@ enum SiteStoreError: LocalizedError {
 }
 
 /// Persists `Site` metadata to disk (API keys excluded — those live in Keychain).
-final class SiteStore {
+final class SiteStore: Sendable {
     static let shared = SiteStore()
 
     private let fileURL: URL = {

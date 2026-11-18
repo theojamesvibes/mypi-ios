@@ -161,12 +161,14 @@ struct SetupSheet: View {
         // callback; we then stop here to let the user confirm. Otherwise
         // full OS trust ran during this same call, so we can move on to the
         // authenticated check without re-hitting /api/health.
-        var capturedFingerprint: String?
-        if allowSelfSigned {
-            client.onUntrustedCertificate = { fp in capturedFingerprint = fp }
-        }
+        let capturedFingerprint: String?
         do {
-            _ = try await client.health()
+            if allowSelfSigned {
+                capturedFingerprint = try await client.probeCertificateFingerprint()
+            } else {
+                _ = try await client.health()
+                capturedFingerprint = nil
+            }
         } catch {
             errorMessage = "Could not connect: \(ErrorMessage.userFacing(error))"
             return

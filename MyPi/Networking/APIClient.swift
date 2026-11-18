@@ -1,13 +1,15 @@
 import Foundation
 import Observation
 
-private let _isoFractional: ISO8601DateFormatter = {
+// `ISO8601DateFormatter` is documented thread-safe but isn't annotated
+// `Sendable`; these are configured once and never mutated afterwards.
+nonisolated(unsafe) private let _isoFractional: ISO8601DateFormatter = {
     let f = ISO8601DateFormatter()
     f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return f
 }()
 
-private let _isoBasic: ISO8601DateFormatter = {
+nonisolated(unsafe) private let _isoBasic: ISO8601DateFormatter = {
     let f = ISO8601DateFormatter()
     f.formatOptions = [.withInternetDateTime]
     return f
@@ -31,8 +33,13 @@ private let _naiveBasic: DateFormatter = {
 
 /// HTTP client for a single MyPi site. Holds a persistent URLSession configured
 /// for the site's TLS policy. API key is fetched from the Keychain on each request.
+///
+/// `@unchecked Sendable`: requests are issued from the main-actor view models
+/// but run (and decode) off the main thread. Everything here is immutable
+/// after `init` except `lastTLSVersion`, which is only ever written on the
+/// main actor, and the TOFU handler, which `TLSDelegate` guards with a lock.
 @Observable
-final class APIClient {
+final class APIClient: @unchecked Sendable {
     let site: Site
 
     /// Negotiated TLS protocol version observed on the most recent request
@@ -68,7 +75,7 @@ final class APIClient {
     }
 
     /// Fires when an unrecognised certificate is encountered (TOFU opportunity).
-    var onUntrustedCertificate: ((String) -> Void)? {
+    private var onUntrustedCertificate: (@Sendable (String) -> Void)? {
         get { tlsDelegate.onUntrustedCertificate }
         set { tlsDelegate.onUntrustedCertificate = newValue }
     }
@@ -100,6 +107,20 @@ final class APIClient {
     func health() async throws -> HealthResponse {
         if site.isDemo { return DemoData.health() }
         return try await get("/api/health", authenticated: false)
+    }
+
+    /// TOFU probe: issue the unauthenticated health request with a capture
+    /// handler attached and return the leaf-certificate fingerprint the
+    /// server presented, or nil when the connection validated without the
+    /// self-signed path. The handler is detached again before returning, so
+    /// this client goes back to failing closed and can't later send the API
+    /// key over a connection nobody has approved.
+    func probeCertificateFingerprint() async throws -> String? {
+        let box = FingerprintBox()
+        onUntrustedCertificate = { box.set($0) }
+        defer { onUntrustedCertificate = nil }
+        _ = try await health()
+        return box.value
     }
 
     /// Discover the backend sites a multi-site MyPi server (1.11+) hosts.
@@ -140,7 +161,7 @@ final class APIClient {
     func history(range: TimeRange, instanceId: String? = nil) async throws -> HistoryResponse {
         if site.isDemo { return DemoData.history(range: range, instanceId: instanceId) }
         var path = "/api/stats/history?\(range.queryString())&bucket_minutes=\(range.bucketMinutes)"
-        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
+        if let inst = Self.queryValue(instanceId) { path += "&instance_id=\(inst)" }
         return try await get(path)
     }
 
@@ -149,17 +170,23 @@ final class APIClient {
         return try await get("/api/stats/top?\(range.queryString())&limit=\(limit)")
     }
 
-    func queries(page: Int = 1, pageSize: Int = 50, range: TimeRange, filter: QueryFilter = .all, domain: String? = nil, instanceId: String? = nil) async throws -> QueryPage {
+    func queries(
+        page: Int = 1,
+        pageSize: Int = 50,
+        range: TimeRange,
+        filter: QueryFilter = .all,
+        domain: String? = nil,
+        client: String? = nil,
+        instanceId: String? = nil
+    ) async throws -> QueryPage {
         if site.isDemo {
-            return DemoData.queries(page: page, pageSize: pageSize, range: range, filter: filter, domain: domain, instanceId: instanceId)
+            return DemoData.queries(page: page, pageSize: pageSize, range: range, filter: filter, domain: domain, client: client, instanceId: instanceId)
         }
         var path = "/api/queries?page=\(page)&page_size=\(pageSize)&\(range.queryString())"
         if let q = filter.queryParam { path += "&\(q)" }
-        if let d = domain?.trimmingCharacters(in: .whitespaces), !d.isEmpty,
-           let encoded = d.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            path += "&domain=\(encoded)"
-        }
-        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
+        if let d = Self.queryValue(domain) { path += "&domain=\(d)" }
+        if let c = Self.queryValue(client) { path += "&client=\(c)" }
+        if let inst = Self.queryValue(instanceId) { path += "&instance_id=\(inst)" }
         return try await get(path)
     }
 
@@ -167,7 +194,7 @@ final class APIClient {
     func clients(range: TimeRange, instanceId: String? = nil) async throws -> [ClientSummary] {
         if site.isDemo { return DemoData.clients(range: range, instanceId: instanceId) }
         var path = "/api/queries/clients?\(range.queryString())"
-        if let inst = instanceId, !inst.isEmpty { path += "&instance_id=\(inst)" }
+        if let inst = Self.queryValue(instanceId) { path += "&instance_id=\(inst)" }
         return try await get(path)
     }
 
@@ -177,6 +204,57 @@ final class APIClient {
     func instances() async throws -> [InstanceSummary] {
         if site.isDemo { return DemoData.instances() }
         return try await get("/api/instances")
+    }
+
+    // MARK: - Domain lists (read-only)
+
+    /// Allow/deny-list membership for a domain, read live from the site's
+    /// master Pi-hole. Read-only — works with a read-only API key.
+    func domainStatus(_ domain: String) async throws -> DomainListStatus {
+        if site.isDemo { return DemoData.domainStatus(domain) }
+        guard let segment = Self.domainPathSegment(domain) else { throw URLError(.badURL) }
+        return try await get("/api/domains/status/\(segment)")
+    }
+
+    /// Which adlist / deny entries block a domain (MyPi server 2.6.0+; older
+    /// servers answer 404 and callers treat that as "not available").
+    func domainBlocklists(_ domain: String, range: TimeRange) async throws -> DomainBlocklists {
+        if site.isDemo { return DemoData.domainBlocklists(domain) }
+        guard let segment = Self.domainPathSegment(domain) else { throw URLError(.badURL) }
+        return try await get("/api/domains/blocklists/\(segment)?\(range.queryString())")
+    }
+
+    // MARK: - URL building
+
+    /// Characters allowed unescaped in a query-string *value*. Stricter than
+    /// `.urlQueryAllowed`, which leaves `&`, `=`, `+` and `#` alone — a value
+    /// containing them would otherwise add or truncate parameters.
+    private static let queryValueAllowed: CharacterSet = {
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-._~")
+        return set
+    }()
+
+    /// Trimmed, percent-encoded query value; nil when empty.
+    static func queryValue(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed.addingPercentEncoding(withAllowedCharacters: queryValueAllowed)
+    }
+
+    /// A domain as a single URL path segment, or nil when it isn't one the
+    /// server would accept. Domains in the query log come from whatever a
+    /// device on the network chose to look up, so they are untrusted input:
+    /// only the server's own allowed alphabet (letters, digits, `.`, `_`,
+    /// `-`, `*`) is let through, and dot-only names are rejected so a name
+    /// like `..` can't re-target the request to a different endpoint.
+    static func domainPathSegment(_ raw: String) -> String? {
+        let domain = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !domain.isEmpty, domain.count <= 253 else { return nil }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789._*-")
+        guard domain.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
+        guard domain.contains(where: { $0 != "." }) else { return nil }
+        return domain.addingPercentEncoding(withAllowedCharacters: queryValueAllowed)
     }
 
     /// Global sync state — the timestamp of the last query-log sync run,
@@ -212,7 +290,10 @@ final class APIClient {
             return path
         }
         guard path.hasPrefix("/api/") else { return path }
-        return "/api/sites/\(slug)/" + String(path.dropFirst("/api/".count))
+        // Slugs are server-assigned `[a-z0-9-]`; encoding anything else keeps
+        // an unexpected value inside its own path segment.
+        let segment = slug.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed) ?? slug
+        return "/api/sites/\(segment)/" + String(path.dropFirst("/api/".count))
     }
 
     func get<T: Decodable>(_ path: String, authenticated: Bool = true) async throws -> T {
@@ -242,6 +323,15 @@ final class APIClient {
         }
         return try decoder.decode(T.self, from: data)
     }
+}
+
+/// Carries the fingerprint from URLSession's delegate queue back to the caller.
+private final class FingerprintBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+
+    var value: String? { lock.withLock { stored } }
+    func set(_ fingerprint: String) { lock.withLock { stored = fingerprint } }
 }
 
 // MARK: - QueryFilter

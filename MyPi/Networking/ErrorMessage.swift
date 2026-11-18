@@ -7,6 +7,8 @@ import Foundation
 /// trust for a Pi-hole aggregator but still filter through this path so
 /// there's one callsite to tighten later if needed.
 enum ErrorMessage {
+    static let maxDetailLength = 300
+
     static func userFacing(_ error: Error) -> String {
         if let urlErr = error as? URLError {
             switch urlErr.code {
@@ -36,7 +38,13 @@ enum ErrorMessage {
             }
         }
         if let apiErr = error as? APIError {
-            return apiErr.detail
+            // Server-supplied text: keep it to a sentence or two so an
+            // unexpectedly large error body can't take over the screen.
+            let detail = apiErr.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            if detail.isEmpty { return "The server reported an error." }
+            return detail.count > maxDetailLength
+                ? String(detail.prefix(maxDetailLength)) + "…"
+                : detail
         }
         return "An unexpected error occurred."
     }

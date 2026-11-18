@@ -245,10 +245,9 @@ struct SiteFormView: View {
             sortOrder: site.sortOrder
         )
         let client = APIClient(site: draft)
-        var captured: String?
-        client.onUntrustedCertificate = { fp in captured = fp }
+        let captured: String?
         do {
-            _ = try await client.health()
+            captured = try await client.probeCertificateFingerprint()
         } catch {
             errorMessage = "Could not connect: \(ErrorMessage.userFacing(error))"
             return

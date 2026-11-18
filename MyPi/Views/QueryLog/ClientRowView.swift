@@ -31,5 +31,6 @@ struct ClientRowView: View {
             .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }

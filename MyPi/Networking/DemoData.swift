@@ -213,16 +213,67 @@ enum DemoData {
 
     // MARK: - Query log
 
-    static func queries(page: Int, pageSize: Int, range: TimeRange, filter: QueryFilter, domain: String?, instanceId: String? = nil) -> QueryPage {
+    static func queries(page: Int, pageSize: Int, range: TimeRange, filter: QueryFilter, domain: String?, client: String? = nil, instanceId: String? = nil) -> QueryPage {
         // A filter for anything other than a known demo device matches nothing.
         if let inst = instanceId, !validInstanceIds.contains(inst) {
             return QueryPage(items: [], total: 0, page: page, pageSize: pageSize)
         }
-        // Only page 1 has content — pagination in demo mode just stops.
-        let all = page == 1 ? syntheticQueries(count: 120, filter: filter) : []
-        let matching = instanceId == nil ? all : all.filter { $0.instanceId == instanceId }
-        let items = Array(matching.prefix(pageSize))
+        var matching = syntheticQueries(count: 120, filter: filter)
+        if let instanceId {
+            matching = matching.filter { $0.instanceId == instanceId }
+        }
+        // Mirror the server's substring `domain=` / `client=` filters so the
+        // detail screen's "show queries for…" shortcuts work in demo mode.
+        if let d = domain?.trimmingCharacters(in: .whitespaces), !d.isEmpty {
+            matching = matching.filter { $0.domain.localizedCaseInsensitiveContains(d) }
+        }
+        if let c = client?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
+            matching = matching.filter {
+                $0.clientIp.localizedCaseInsensitiveContains(c) ||
+                ($0.clientName ?? "").localizedCaseInsensitiveContains(c)
+            }
+        }
+        // Page like the server does (OFFSET/LIMIT over the filtered set) so
+        // infinite scroll and the result count behave as they do live.
+        let start = max(0, page - 1) * max(1, pageSize)
+        let items = Array(matching.dropFirst(start).prefix(pageSize))
         return QueryPage(items: items, total: matching.count, page: page, pageSize: pageSize)
+    }
+
+    // MARK: - Domain lists
+
+    private static let demoBlockedDomains: Set<String> = [
+        "doubleclick.net", "google-analytics.com", "graph.facebook.com",
+        "api.mixpanel.com", "ads.youtube.com", "telemetry.microsoft.com",
+    ]
+
+    static func domainStatus(_ domain: String) -> DomainListStatus {
+        let d = domain.lowercased()
+        let denied = d == "ads.youtube.com"
+        return DomainListStatus(
+            domain: d,
+            inDeny: denied,
+            inAllow: false,
+            effective: denied ? "denied" : "unmanaged"
+        )
+    }
+
+    static func domainBlocklists(_ domain: String) -> DomainBlocklists {
+        let d = domain.lowercased()
+        guard demoBlockedDomains.contains(d) else {
+            return DomainBlocklists(domain: d, blockCount: 0, lists: [])
+        }
+        var lists = [
+            DomainBlocklists.Entry(
+                name: "StevenBlack Unified",
+                address: "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+                kind: "gravity"
+            ),
+        ]
+        if d == "ads.youtube.com" {
+            lists.append(DomainBlocklists.Entry(name: d, address: nil, kind: "deny-exact"))
+        }
+        return DomainBlocklists(domain: d, blockCount: 37, lists: lists)
     }
 
     static func clients(range: TimeRange, instanceId: String? = nil) -> [ClientSummary] {
@@ -302,24 +353,17 @@ enum DemoData {
             ("10.0.1.15", "MacBook-Air"),
             ("10.0.1.40", "Kids-iPad"),
         ]
-        let statuses = ["OK", "OK", "OK", "CACHE", "GRAVITY", "REGEX", "OK", "FORWARDED"]
+        let statuses = ["FORWARDED", "CACHE", "FORWARDED", "CACHE", "FORWARDED", "CACHE_STALE", "FORWARDED", "FORWARDED"]
         let now = Date()
         var out: [QueryEntry] = []
         for i in 0..<count {
             let domain = domains[i % domains.count]
             let client = clients[i % clients.count]
-            let rawStatus = statuses[(i * 7) % statuses.count]
-            // Respect filter so "Blocked" / "Permitted" chips feel live.
-            let status: String = {
-                switch filter {
-                case .blocked:
-                    return ["GRAVITY", "REGEX", "BLACKLIST"][i % 3]
-                case .permitted:
-                    return ["OK", "CACHE", "FORWARDED"][i % 3]
-                default:
-                    return rawStatus
-                }
-            }()
+            // Known ad/tracker domains are always gravity-blocked so the
+            // detail screen's "Blocked by" lists line up with the row.
+            let rawStatus = demoBlockedDomains.contains(domain)
+                ? "GRAVITY" : statuses[(i * 7) % statuses.count]
+            let status = rawStatus
             // Roughly a third of the traffic comes via the bedroom device so
             // the Device filter visibly changes the list in demo mode.
             let isBedroom = i % 3 == 2
@@ -331,9 +375,19 @@ enum DemoData {
                 clientName: client.1,
                 status: status,
                 instanceId: isBedroom ? secondaryInstanceId : primaryInstanceId,
-                instanceName: isBedroom ? "Bedroom Pi-hole" : "Pi-hole (Demo)"
+                instanceName: isBedroom ? "Bedroom Pi-hole" : "Pi-hole (Demo)",
+                queryType: ["A", "AAAA", "HTTPS", "A"][i % 4],
+                replyType: QueryStatusKind(status: status) == .blocked
+                    ? "IP" : ["IP", "IP", "CNAME"][i % 3],
+                replyTimeMs: QueryStatusKind(status: status) == .permitted
+                    ? 8.0 + Double((i * 37) % 60) : 0.2 + Double(i % 9) / 10
             ))
         }
-        return out
+        // Respect the filter the way the server's `blocked=` param does.
+        switch filter {
+        case .blocked: return out.filter(\.isBlocked)
+        case .permitted: return out.filter { !$0.isBlocked }
+        default: return out
+        }
     }
 }

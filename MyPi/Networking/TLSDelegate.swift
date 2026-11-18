@@ -14,17 +14,30 @@ import Network
 ///   request). With no handler attached this is a regular runtime client, so the
 ///   challenge is cancelled rather than silently accepting an unverified
 ///   certificate on a request that carries the API key.
-final class TLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+///
+/// `@unchecked Sendable`: URLSession calls the delegate on its own queue while
+/// the handlers are attached from the main actor, so both are kept behind a lock.
+final class TLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
     private let allowSelfSigned: Bool
     private let pinnedFingerprint: String?
 
+    private let lock = NSLock()
+    private var _onUntrustedCertificate: (@Sendable (String) -> Void)?
+    private var _onTLSVersionObserved: (@Sendable (String?) -> Void)?
+
     /// Called when a TOFU opportunity arises (first connection, no pin stored yet).
     /// Returns the fingerprint the app should ask the user to trust and pin.
-    var onUntrustedCertificate: ((String) -> Void)?
+    var onUntrustedCertificate: (@Sendable (String) -> Void)? {
+        get { lock.withLock { _onUntrustedCertificate } }
+        set { lock.withLock { _onUntrustedCertificate = newValue } }
+    }
 
     /// Called after each task completes with the negotiated TLS protocol version
     /// (e.g. "TLS 1.3", "TLS 1.2"). `nil` if no TLS metadata was available.
-    var onTLSVersionObserved: ((String?) -> Void)?
+    var onTLSVersionObserved: (@Sendable (String?) -> Void)? {
+        get { lock.withLock { _onTLSVersionObserved } }
+        set { lock.withLock { _onTLSVersionObserved = newValue } }
+    }
 
     init(allowSelfSigned: Bool, pinnedFingerprint: String?) {
         self.allowSelfSigned = allowSelfSigned

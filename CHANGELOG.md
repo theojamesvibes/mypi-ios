@@ -6,9 +6,39 @@ All notable changes to MyPi iOS are documented here.
 
 ## [Unreleased]
 
+---
+
+## [0.5.0] — 2026-11-18
+
 ### Added
 
-- Two more headless-screenshot launch-argument hooks for automated App Store capture: `-mypi-initial-tab querylog|settings` (open on a specific tab) and `-mypi-scroll-to chart|donut|toplists` (scroll the iPhone dashboard to a below-the-fold card). No effect without the arguments.
+- **Tap any Query Log row to see the full query.** A detail sheet shows everything the server holds for that lookup: the full (selectable) domain, exact time with seconds, DNS record type, raw Pi-hole status, reply type, reply time, the client's name and IP, and the Pi-hole that answered — each with a plain-English explanation where the raw value is cryptic (e.g. `GRAVITY_CNAME`, `NODATA`, `HTTPS`). The record type, reply type and reply time were already in the server's `/api/queries` response (they are columns on the web Query Log); the app simply wasn't decoding them. Long-press any value to copy it.
+- **Allow/deny-list status and "which list blocked this?" in the detail sheet.** Mirrors the read-only half of the web Query Log's *Manage domain* dialog: whether the domain is on the allow or deny list (`/api/domains/status/{domain}`), and for blocked queries the adlist / deny entries that match it, with the Security badge and a "blocked N times in this range" figure (`/api/domains/blocklists/{domain}`, MyPi server 2.6.0+ — the section is simply omitted on older servers). Both are GETs and work with a read-only API key. The blocklist lookup is only made for blocked queries, since it costs the server a live search on the master Pi-hole. Allow/block *actions* stay on the web UI — the app remains read-only.
+- **Drill down by domain or client.** "Show Queries for This Domain" / "Show Queries from This Client" in the detail sheet, and tapping a row in Unique Clients, narrow the log with the server's `domain=` / `client=` filters — the same ones behind the Domain and Client boxes on the web Query Log — so the result covers every page rather than only the rows already loaded. Active drill-downs appear as removable chips next to Filter / When / Device.
+- **Result count** above the list ("1,234 queries"), as on the web Query Log; while searching it shows how many of the loaded rows match.
+- Rows now show the DNS record type and, for queries from earlier days (48h / 7d / 30d ranges), the date as well as the time. Times include seconds.
+- Launch-argument hooks for automated screenshots: `-mypi-initial-tab querylog|settings`, `-mypi-scroll-to chart|donut|toplists`, and `-mypi-open-query <row>` (opens the detail sheet for that row). No effect without the arguments.
+
+### Fixed
+
+- **View-model state was being mutated off the main thread.** `AppState`, `DashboardViewModel` and `QueryLogViewModel` were plain `@Observable` classes with `async` methods, which Swift runs on a background executor — so every fetch wrote UI state (the query list, the dashboard payloads, connection states) concurrently with SwiftUI reading it on the main thread. All three, plus `NetworkMonitor`, are now `@MainActor`; requests and JSON decoding still run off the main thread inside `APIClient`. This also clears the 49 strict-concurrency warnings the build was emitting.
+- **Changing a Query Log filter while a request was in flight could show the wrong rows.** A slow response for the previous filter could land after the response for the current one, replacing the list — and was then written to the disk cache under the *new* filter's key. Each reset now carries a generation token and stale responses are dropped; requests are applied and cached against the filters they were issued with. Several filters changing at once are coalesced into one request.
+- **A single query with a null domain, client or status emptied the whole Query Log.** The server schema allows those fields to be null, but the app decoded them as required, so one such row failed the decode of the entire page. They now decode as empty and the row renders with a placeholder.
+- **A failed "load more" skipped a page for good.** The page counter was advanced before the request, so a failure left a permanent gap, and the spinner sat at the bottom of the list forever. The counter now advances only on success and the footer shows the error with a Try Again button.
+- **Duplicate rows while scrolling a live log.** The log is newest-first and keeps growing, so by the time the next page is requested rows have shifted and a page can repeat entries from the one before. Repeats are now dropped (duplicate row identities also made the list misbehave).
+- **Infinite scroll could stall** if the bottom spinner came on screen while a refresh was already running; it now re-arms when that request finishes.
+- Switching the Query Log filter while the server is unreachable no longer leaves the previous filter's rows on screen under the new chips — the cached page for the new filter is shown if there is one, otherwise the error.
+- Switching the dashboard time range while a fetch was in flight could briefly publish (and cache) the previous range's data.
+- Blocked queries reported with Pi-hole v6's newer status names (`DENYLIST`, `DENYLIST_CNAME`, `EXTERNAL_BLOCKED_NXRA`, `EXTERNAL_BLOCKED_EDE15`, `SPECIAL_DOMAIN`) are now drawn as blocked instead of permitted. Statuses with no final answer (`IN_PROGRESS`, `DBBUSY`, unknown) get a neutral icon rather than a green check.
+- Demo mode now pages the sample query log like a real server (previously page 2 came back empty with a total of 0), and its Blocked / Permitted filters keep each domain's real status.
+
+### Security
+
+- **Domains from the query log are validated before being used in a request path.** A logged "domain" is whatever a device on the network chose to look up, so it is untrusted input; only the server's own accepted alphabet is allowed through to the new domain lookups, and names that could escape the path segment (`..`, `/`, `?`, `#`, …) are refused client-side.
+- **Query-string values are now strictly percent-encoded** (`&`, `=`, `+`, `#` included), so a filter value can't add or truncate parameters. The multi-site slug is encoded into its path segment the same way.
+- **The disk cache is written with complete file protection.** Cached pages include domains looked up and client names/IPs; they are now encrypted whenever the device is locked rather than only until first unlock.
+- **The TOFU certificate probe detaches its capture handler when it finishes**, so a draft client that was allowed to see an unverified certificate goes straight back to failing closed. The three copies of the probe (setup, edit, re-pin) now share one implementation, which also removes a data race on the captured fingerprint.
+- Server-supplied error text shown in the UI is capped at 300 characters.
 
 ---
 

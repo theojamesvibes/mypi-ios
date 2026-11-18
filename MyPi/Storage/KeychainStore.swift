@@ -20,7 +20,7 @@ enum KeychainError: LocalizedError {
 
 /// Thin wrapper around the iOS Keychain for storing per-site API keys and
 /// certificate fingerprints.
-final class KeychainStore {
+final class KeychainStore: Sendable {
     static let shared = KeychainStore()
     private let service = "net.myssdomain.mypi"
 

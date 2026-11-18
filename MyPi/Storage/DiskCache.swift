@@ -2,7 +2,7 @@ import Foundation
 
 /// Simple disk cache. Stores the last successful API response per cache key so
 /// the app can show stale data when the network is unavailable.
-final class DiskCache {
+final class DiskCache: Sendable {
     static let shared = DiskCache()
 
     private let directory: URL = {
@@ -18,7 +18,11 @@ final class DiskCache {
         let wrapper = CachedResponse(data: value, fetchedAt: Date())
         guard let data = try? JSONEncoder().encode(wrapper) else { return }
         let url = directory.appendingPathComponent(sanitize(key))
-        try? data.write(to: url, options: .atomic)
+        // Cached pages include the query log (domains looked up, client
+        // names and IPs), so keep them encrypted whenever the device is
+        // locked. The app only fetches in the foreground, so a write never
+        // legitimately happens while locked.
+        try? data.write(to: url, options: [.atomic, .completeFileProtection])
     }
 
     func read<T: Codable>(key: String, as type: T.Type) -> CachedResponse<T>? {

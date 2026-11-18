@@ -4,6 +4,7 @@ import Observation
 
 /// Observes network path changes. ViewModels subscribe to `isConnected` to
 /// pause/resume polling without burning battery when offline.
+@MainActor
 @Observable
 final class NetworkMonitor {
     static let shared = NetworkMonitor()
@@ -20,9 +21,11 @@ final class NetworkMonitor {
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            DispatchQueue.main.async {
-                self?.isConnected = path.status == .satisfied
-                self?.connectionType = path.availableInterfaces.first?.type
+            let connected = path.status == .satisfied
+            let type = path.availableInterfaces.first?.type
+            Task { @MainActor in
+                self?.isConnected = connected
+                self?.connectionType = type
             }
         }
         monitor.start(queue: queue)

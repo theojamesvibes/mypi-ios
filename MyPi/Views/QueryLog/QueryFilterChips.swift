@@ -85,6 +85,19 @@ struct QueryFilterChips: View {
                     }
                 }
 
+                // Drill-down filters set from the query detail screen (the
+                // web Query Log's Domain / Client boxes). Tap to clear.
+                if let domain = vm.domainFilter {
+                    RemovableChip(title: "Domain", value: domain) {
+                        vm.domainFilter = nil
+                    }
+                }
+                if let client = vm.clientFilter {
+                    RemovableChip(title: "Client", value: client) {
+                        vm.clientFilter = nil
+                    }
+                }
+
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
@@ -119,5 +132,39 @@ private struct ChipLabel: View {
         .overlay(
             Capsule().stroke(tint.opacity(0.25), lineWidth: 0.5)
         )
+    }
+}
+
+/// A chip for a filter that has no menu of choices — it's either applied or
+/// not, so the whole chip is a "remove" button.
+private struct RemovableChip: View {
+    let title: String
+    let value: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button(action: onRemove) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.subheadline).bold()
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 180)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+            .overlay(Capsule().stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title) filter: \(value)")
+        .accessibilityHint("Removes this filter")
     }
 }

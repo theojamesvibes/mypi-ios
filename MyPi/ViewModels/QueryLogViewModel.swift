@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+/// State for the Query Log tab. Main-actor isolated: every property here is
+/// read by SwiftUI during rendering, so all mutation has to happen on the
+/// main thread — the network calls themselves still run off it inside
+/// `APIClient`.
+@MainActor
 @Observable
 final class QueryLogViewModel {
     // MARK: - State
@@ -13,11 +18,18 @@ final class QueryLogViewModel {
     var searchText: String = ""
     var lastUpdated: Date?
 
+    /// Total rows matching the current server-side filters (all pages).
+    var totalCount: Int?
+
+    /// Set when fetching a *further* page failed. The rows already loaded
+    /// stay on screen and the list footer offers a retry.
+    var pageErrorMessage: String?
+
     var filter: QueryFilter = .all {
-        didSet { Task { await reset() } }
+        didSet { if filter != oldValue { scheduleReset() } }
     }
     var selectedRange: TimeRange = .today {
-        didSet { Task { await reset() } }
+        didSet { if selectedRange != oldValue { scheduleReset() } }
     }
 
     /// Pi-hole devices on the server, for the Device filter chip (mirrors the
@@ -27,7 +39,20 @@ final class QueryLogViewModel {
 
     /// Server-side `instance_id` filter; nil means all devices.
     var selectedInstanceId: String? {
-        didSet { Task { await reset() } }
+        didSet { if selectedInstanceId != oldValue { scheduleReset() } }
+    }
+
+    /// Server-side `domain=` filter (substring match, like the Domain box on
+    /// the web Query Log). Set from the query detail screen; unlike the
+    /// search field it reaches every page, not just the rows already loaded.
+    var domainFilter: String? {
+        didSet { if domainFilter != oldValue { scheduleReset() } }
+    }
+
+    /// Server-side `client=` filter (IP or name substring, like the Client
+    /// box on the web Query Log).
+    var clientFilter: String? {
+        didSet { if clientFilter != oldValue { scheduleReset() } }
     }
 
     var selectedInstanceName: String? {
@@ -40,8 +65,9 @@ final class QueryLogViewModel {
     var site: Site { client.site }
 
     /// Local search over every user-visible field so "Search" in the nav bar
-    /// covers domain, client IP / name, status, and the Pi-hole instance
-    /// name — not just domain (which was the old server-side filter).
+    /// covers domain, client IP / name, status, type, and the Pi-hole
+    /// instance name. Only searches rows already loaded — the Domain / Client
+    /// filters are the server-side equivalents.
     var filteredQueries: [QueryEntry] {
         let q = searchText.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return queries }
@@ -50,6 +76,7 @@ final class QueryLogViewModel {
             entry.clientIp.localizedCaseInsensitiveContains(q) ||
             (entry.clientName ?? "").localizedCaseInsensitiveContains(q) ||
             entry.status.localizedCaseInsensitiveContains(q) ||
+            (entry.queryType ?? "").localizedCaseInsensitiveContains(q) ||
             (entry.instanceName ?? "").localizedCaseInsensitiveContains(q)
         }
     }
@@ -73,14 +100,50 @@ final class QueryLogViewModel {
     private let pageSize: Int = 50
     private var hasHydratedFromCache = false
 
-    private var cacheKeyPrefix: String {
-        "querylog-\(client.site.id.uuidString)"
+    /// Bumped by every reset. A fetch captures the value when it starts and
+    /// drops its response if a newer reset has begun since — otherwise a slow
+    /// response for the *previous* filter could land after (and overwrite)
+    /// the rows for the current one, and be cached under the wrong key.
+    private var generation: Int = 0
+
+    /// The filters a request was issued with, captured before the first
+    /// `await` so the response is applied and cached against what was
+    /// actually asked for rather than whatever is selected by then.
+    private struct Scope: Equatable {
+        let filter: QueryFilter
+        let range: TimeRange
+        let instanceId: String?
+        let domain: String?
+        let client: String?
+
+        var isClientsMode: Bool { filter.isClientsMode }
+
+        /// Only the plain filter/range/device views are cached to disk. A
+        /// domain- or client-narrowed view is an ad-hoc drill-down: caching
+        /// it would add a file per value ever tapped.
+        var isCacheable: Bool { domain == nil && client == nil }
+
+        func cacheKey(prefix: String) -> String {
+            let instance = instanceId.map { "-inst-\($0)" } ?? ""
+            if isClientsMode {
+                return prefix + "-clients-\(range.id)" + instance
+            }
+            return prefix + "-queries-\(filter.rawValue)-\(range.id)" + instance
+        }
     }
 
-    /// Cache-key fragment for the device filter. Empty when no device is
-    /// selected so pre-existing (unfiltered) cache entries stay valid.
-    private var instanceKeySuffix: String {
-        selectedInstanceId.map { "-inst-\($0)" } ?? ""
+    private var scope: Scope {
+        Scope(
+            filter: filter,
+            range: selectedRange,
+            instanceId: selectedInstanceId,
+            domain: isClientsMode ? nil : domainFilter,
+            client: isClientsMode ? nil : clientFilter
+        )
+    }
+
+    private var cacheKeyPrefix: String {
+        "querylog-\(client.site.id.uuidString)"
     }
 
     init(client: APIClient) {
@@ -94,6 +157,49 @@ final class QueryLogViewModel {
         async let deviceList: Void = loadInstances()
         await reset()
         await deviceList
+    }
+
+    func loadNextPage() async {
+        guard !isLoading, !isClientsMode, currentPage < totalPages else { return }
+        await fetchPage(currentPage + 1, appending: true)
+    }
+
+    func refresh() async {
+        await reset()
+    }
+
+    /// Narrow the log to one domain (server-side) and leave Unique Clients
+    /// mode if it was active, since that view ignores the domain.
+    func showQueries(forDomain domain: String) {
+        let trimmed = domain.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        searchText = ""
+        if isClientsMode { filter = .all }
+        domainFilter = trimmed
+    }
+
+    /// Narrow the log to one client (server-side), matching on IP or name.
+    func showQueries(forClient client: String) {
+        let trimmed = client.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        searchText = ""
+        if isClientsMode { filter = .all }
+        clientFilter = trimmed
+    }
+
+    // MARK: - Private
+
+    /// Several filters can change in one go (e.g. leaving Unique Clients
+    /// *and* setting a domain); coalesce them into a single reset.
+    private var resetScheduled = false
+
+    private func scheduleReset() {
+        guard !resetScheduled else { return }
+        resetScheduled = true
+        Task {
+            resetScheduled = false
+            await reset()
+        }
     }
 
     /// Fetch the device list for the Device chip. Failure is non-fatal —
@@ -110,38 +216,61 @@ final class QueryLogViewModel {
     private func hydrateFromCacheIfNeeded() {
         guard !hasHydratedFromCache else { return }
         hasHydratedFromCache = true
-        if isClientsMode {
+        let scope = scope
+        guard scope.isCacheable else { return }
+        let key = scope.cacheKey(prefix: cacheKeyPrefix)
+        if scope.isClientsMode {
             if clients.isEmpty,
-               let cached = DiskCache.shared.read(
-                   key: cacheKeyPrefix + "-clients-\(selectedRange.id)" + instanceKeySuffix,
-                   as: [ClientSummary].self
-               ) {
+               let cached = DiskCache.shared.read(key: key, as: [ClientSummary].self) {
                 clients = cached.data
                 lastUpdated = cached.fetchedAt
+                lastAppliedScope = scope
             }
         } else {
             if queries.isEmpty,
-               let cached = DiskCache.shared.read(
-                   key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)" + instanceKeySuffix,
-                   as: [QueryEntry].self
-               ) {
+               let cached = DiskCache.shared.read(key: key, as: [QueryEntry].self) {
                 queries = cached.data
                 lastUpdated = cached.fetchedAt
+                lastAppliedScope = scope
             }
         }
     }
 
-    func loadNextPage() async {
-        guard !isLoading, !isClientsMode, currentPage < totalPages else { return }
-        currentPage += 1
-        await fetchPage(currentPage, appending: true)
-    }
+    /// A first-page fetch failed. If the rows on screen were fetched with
+    /// the same filters, keep them (an unreachable site falls back to what's
+    /// already shown). If the filters changed, the old rows no longer match
+    /// the chips: swap in the cached page for the new filters when there is
+    /// one, otherwise show the error.
+    private func handleFirstPageFailure(_ error: Error, scope: Scope) {
+        let hasRows = scope.isClientsMode ? !clients.isEmpty : !queries.isEmpty
+        if hasRows, scope == lastAppliedScope { return }
 
-    func refresh() async {
-        await reset()
+        hasMore = false
+        totalCount = nil
+        if scope.isCacheable {
+            let key = scope.cacheKey(prefix: cacheKeyPrefix)
+            if scope.isClientsMode,
+               let cached = DiskCache.shared.read(key: key, as: [ClientSummary].self) {
+                clients = cached.data
+                queries = []
+                lastUpdated = cached.fetchedAt
+                lastAppliedScope = scope
+                return
+            }
+            if !scope.isClientsMode,
+               let cached = DiskCache.shared.read(key: key, as: [QueryEntry].self) {
+                queries = cached.data
+                clients = []
+                lastUpdated = cached.fetchedAt
+                lastAppliedScope = scope
+                return
+            }
+        }
+        queries = []
+        clients = []
+        lastAppliedScope = nil
+        errorMessage = ErrorMessage.userFacing(error)
     }
-
-    // MARK: - Private
 
     /// Fetch page 1 (or the clients aggregate) without eagerly clearing the
     /// existing list — keeps the List mounted during the async fetch so the
@@ -149,7 +278,7 @@ final class QueryLogViewModel {
     /// loading/error state when refreshing a populated list. fetchPage
     /// replaces contents on success.
     private func reset() async {
-        currentPage = 1
+        generation += 1
         if isClientsMode {
             await fetchClients()
         } else {
@@ -157,63 +286,84 @@ final class QueryLogViewModel {
         }
     }
 
-    /// Server-side `domain=` search was removed so the single Search box in
-    /// the nav bar covers every field (domain, client IP/name, status,
-    /// instance) locally. Pagination + filter/range still go to the server.
+    /// Pagination + every filter chip go to the server; the Search box is
+    /// applied locally over the loaded rows.
     private func fetchPage(_ page: Int, appending: Bool) async {
+        let scope = scope
+        let requestGeneration = generation
         isLoading = true
-        errorMessage = nil
+        if !appending { errorMessage = nil }
+        pageErrorMessage = nil
         do {
             let result = try await client.queries(
                 page: page,
                 pageSize: pageSize,
-                range: selectedRange,
-                filter: filter,
-                domain: nil,
-                instanceId: selectedInstanceId
+                range: scope.range,
+                filter: scope.filter,
+                domain: scope.domain,
+                client: scope.client,
+                instanceId: scope.instanceId
             )
+            // A newer reset started while this was in flight — its own fetch
+            // owns the list (and `isLoading`) now.
+            guard requestGeneration == generation else { return }
             if appending {
-                queries.append(contentsOf: result.items)
+                // The log is newest-first and still growing, so by the time
+                // page N+1 is requested rows have shifted down and the page
+                // can repeat entries from page N. Duplicate ids would break
+                // the list's row identity, so keep the first occurrence.
+                var seen = Set(queries.map(\.id))
+                queries.append(contentsOf: result.items.filter { seen.insert($0.id).inserted })
             } else {
                 queries = result.items
                 clients = []  // leave clients-mode state clean
             }
+            currentPage = page
             totalPages = result.pages
-            hasMore = page < result.pages
+            totalCount = result.total
+            // An empty page means the server has nothing further, whatever
+            // the page arithmetic says — stop rather than refetch forever.
+            hasMore = page < result.pages && !result.items.isEmpty
             lastUpdated = Date()
-            if page == 1 {
-                DiskCache.shared.write(
-                    queries,
-                    key: cacheKeyPrefix + "-queries-\(filter.rawValue)-\(selectedRange.id)" + instanceKeySuffix
-                )
+            if !appending { lastAppliedScope = scope }
+            if page == 1, scope.isCacheable {
+                DiskCache.shared.write(queries, key: scope.cacheKey(prefix: cacheKeyPrefix))
             }
         } catch {
-            // Keep existing rows visible if we already have data — a failed
-            // refresh on an unreachable site should fall back to cache, not
-            // replace the list with an error screen.
-            if queries.isEmpty {
-                errorMessage = ErrorMessage.userFacing(error)
+            guard requestGeneration == generation else { return }
+            if appending {
+                // `currentPage` is only advanced on success, so retrying
+                // asks for the same page again instead of skipping it.
+                pageErrorMessage = ErrorMessage.userFacing(error)
+            } else {
+                handleFirstPageFailure(error, scope: scope)
             }
         }
         isLoading = false
     }
 
+    /// Filters the rows currently on screen were fetched with.
+    private var lastAppliedScope: Scope?
+
     private func fetchClients() async {
+        let scope = scope
+        let requestGeneration = generation
         isLoading = true
         errorMessage = nil
+        pageErrorMessage = nil
         do {
-            clients = try await client.clients(range: selectedRange, instanceId: selectedInstanceId)
+            let result = try await client.clients(range: scope.range, instanceId: scope.instanceId)
+            guard requestGeneration == generation else { return }
+            clients = result
             queries = []
             hasMore = false
+            totalCount = nil
             lastUpdated = Date()
-            DiskCache.shared.write(
-                clients,
-                key: cacheKeyPrefix + "-clients-\(selectedRange.id)" + instanceKeySuffix
-            )
+            lastAppliedScope = scope
+            DiskCache.shared.write(clients, key: scope.cacheKey(prefix: cacheKeyPrefix))
         } catch {
-            if clients.isEmpty {
-                errorMessage = ErrorMessage.userFacing(error)
-            }
+            guard requestGeneration == generation else { return }
+            handleFirstPageFailure(error, scope: scope)
         }
         isLoading = false
     }
